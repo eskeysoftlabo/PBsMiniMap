@@ -117,21 +117,26 @@ function addon:InitSettings()
 		}
 	)
 
-	settings:AddSetting(
-		{
-			type = LibHarvensAddonSettings.ST_CHECKBOX,
-			label = GetString(SI_PBSMINIMAP_WORLD_MAP_TWEAKS),
-			tooltip = GetString(SI_PBSMINIMAP_WORLD_MAP_TWEAKS_TOOLTIP),
-			default = self.accountDefaults.enableTweaks,
-			getFunction = function()
-				return self.account.enableTweaks
-			end,
-			setFunction = function(value)
-				self.account.enableTweaks = value
-			end,
-			disable = ZO_IsConsoleOrGameCoreUI()
-		}
-	)
+	-- World Map Tweaks is dead weight on console: Initialize() forces enableTweaks off there,
+	-- because that layer is what exhausts the console add-on memory pool. A permanently
+	-- greyed-out control that can never do anything is just confusing, so it is only offered
+	-- where it actually works.
+	if not ZO_IsConsoleOrGameCoreUI() then
+		settings:AddSetting(
+			{
+				type = LibHarvensAddonSettings.ST_CHECKBOX,
+				label = GetString(SI_PBSMINIMAP_WORLD_MAP_TWEAKS),
+				tooltip = GetString(SI_PBSMINIMAP_WORLD_MAP_TWEAKS_TOOLTIP),
+				default = self.accountDefaults.enableTweaks,
+				getFunction = function()
+					return self.account.enableTweaks
+				end,
+				setFunction = function(value)
+					self.account.enableTweaks = value
+				end
+			}
+		)
+	end
 	settings:AddSetting(
 		{
 			type = LibHarvensAddonSettings.ST_CHECKBOX,

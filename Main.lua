@@ -2517,6 +2517,15 @@ function addon:Initialize()
 					panZoom:SetTargetOffset(offsetX, offsetY)
 				end
 
+				-- Setting the offset only stores it; something has to push it into the map
+				-- controls. The game does that as part of its own map update, which we
+				-- otherwise never trigger on the HUD.
+				if panZoom.UpdateMapPositionFromOffsets then
+					panZoom:UpdateMapPositionFromOffsets()
+				elseif ZO_WorldMap_UpdateMap then
+					ZO_WorldMap_UpdateMap()
+				end
+
 				if centreRoute ~= "SetCurrentOffset" then
 					centreRoute = "SetCurrentOffset"
 					self:ReportCentreRoute(centreRoute)
@@ -2553,16 +2562,25 @@ function addon:Initialize()
 		end
 	end
 
-	-- What ZO_MapPanAndZoom actually offers, printed in short chunks so a long list is not
-	-- lost to line limits or scrolled past. Called on startup with debug on, and again the
-	-- moment debug is switched on, so it can be read without a reload.
+	-- What ZO_MapPanAndZoom actually offers.
+	--
+	-- The first attempt printed nothing, because it only looked at getmetatable(panZoom).__index
+	-- and gave up unless that was a table -- yet SetCurrentOffset clearly resolves, so the
+	-- methods live somewhere else. This walks the whole metatable chain, also lists functions
+	-- sitting directly on the object, and says what it found, so a blank result is now
+	-- distinguishable from a lookup that went the wrong way.
 	function addon:DumpPanZoomApi()
 		local panZoom = self.panZoom
 		if not panZoom then
+			df("[PBsMiniMap] panZoom is nil")
 			return
 		end
 
 		local function emitList(label, items)
+			if #items == 0 then
+				df("[PBsMiniMap] %s: (none)", label)
+				return
+			end
 			table.sort(items)
 			local line = ""
 			for index = 1, #items do
@@ -2574,29 +2592,38 @@ function addon:Initialize()
 					line = (#line > 0) and (line .. ", " .. piece) or piece
 				end
 			end
-			if #line > 0 then
-				df("[PBsMiniMap] %s: %s", label, line)
-			end
+			df("[PBsMiniMap] %s: %s", label, line)
 		end
 
-		local meta = getmetatable(panZoom)
-		local index = meta and meta.__index
-		if type(index) == "table" then
-			local names = {}
-			for key, value in pairs(index) do
+		df("[PBsMiniMap] panZoom type=%s meta=%s", type(panZoom), type(getmetatable(panZoom)))
+
+		local methods, fields, seen = {}, {}, {}
+		local function collect(source, depth)
+			if type(source) ~= "table" or seen[source] or depth > 6 then
+				return
+			end
+			seen[source] = true
+			for key, value in pairs(source) do
+				local name = tostring(key)
 				if type(value) == "function" then
-					names[#names + 1] = tostring(key)
+					if not seen["m" .. name] then
+						seen["m" .. name] = true
+						methods[#methods + 1] = name
+					end
+				elseif type(value) ~= "table" and depth == 0 then
+					fields[#fields + 1] = string.format("%s=%s", name, tostring(value))
 				end
 			end
-			emitList("panZoom methods", names)
-		end
 
-		local fields = {}
-		for key, value in pairs(panZoom) do
-			if type(value) ~= "function" and type(value) ~= "table" then
-				fields[#fields + 1] = string.format("%s=%s", tostring(key), tostring(value))
+			local meta = getmetatable(source)
+			if type(meta) == "table" then
+				collect(rawget(meta, "__index"), depth + 1)
+				collect(meta, depth + 1)
 			end
 		end
+		collect(panZoom, 0)
+
+		emitList("panZoom methods", methods)
 		emitList("panZoom fields", fields)
 	end
 

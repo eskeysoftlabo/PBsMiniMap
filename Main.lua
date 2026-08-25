@@ -2409,6 +2409,24 @@ function addon:Initialize()
 		forceMapResync = true
 	end
 
+	-- Switching the map is two steps, not one.
+	--
+	-- SetMapToPlayerLocation only changes which map is selected; the tiles and pins on screen
+	-- are refreshed by the OnWorldMapChanged callbacks. Without firing those, the selection
+	-- moved but the picture stayed on the area just left -- which is exactly the symptom. The
+	-- original add-on does the same pairing wherever it calls SetMapToPlayerLocation itself.
+	local function ApplyMapToPlayer()
+		local result = SetMapToPlayerLocation()
+		addon.lastSetMapResult = result
+		if result == SET_MAP_RESULT_MAP_CHANGED then
+			CALLBACK_MANAGER:FireCallbacks("OnWorldMapChanged")
+			if ZO_WorldMap_UpdateMap then
+				ZO_WorldMap_UpdateMap()
+			end
+		end
+		return result
+	end
+
 	function addon:StartLiteZoneWatch()
 		local function resync()
 			self:RequestMapResync()
@@ -2707,7 +2725,7 @@ function addon:Initialize()
 
 		if forceMapResync or not DoesCurrentMapMatchMapForPlayerLocation() then
 			forceMapResync = false
-			SetMapToPlayerLocation()
+			ApplyMapToPlayer()
 			lastMapTile = GetMapTileTexture()
 			lastPlayerX, lastPlayerY = -1, -1
 			self:ResetLiteZoomState()
@@ -3166,7 +3184,7 @@ local function InitMemoryWatchdog()
 		-- State half of the line: everything the suppression logic depends on.
 		local state =
 			string.format(
-			"front=%s (kb=%s gp=%s api=%s gpMode=%s) dormant=%s attached=%s mode=%s mapType=%s zoom=%.2f/%.2f(%s) player=%.3f,%.3f onOwnMap=%s size=%dx%d scroll=%dx%d follow=%d/%s centre=%d/%s",
+			"front=%s (kb=%s gp=%s api=%s gpMode=%s) dormant=%s attached=%s mode=%s mapType=%s zoom=%.2f/%.2f(%s) player=%.3f,%.3f onOwnMap=%s size=%dx%d scroll=%dx%d follow=%d/%s centre=%d/%s setMap=%s",
 			Bool(inFront),
 			Bool(WORLD_MAP_SCENE and WORLD_MAP_SCENE:IsShowing()),
 			Bool(GAMEPAD_WORLD_MAP_SCENE and GAMEPAD_WORLD_MAP_SCENE:IsShowing()),
@@ -3189,7 +3207,8 @@ local function InitMemoryWatchdog()
 			addon.followTicks or 0,
 			tostring(addon.followSkip or "never"),
 			addon.centreCalls or 0,
-			tostring(addon.centreRoute or "none")
+			tostring(addon.centreRoute or "none"),
+			tostring(addon.lastSetMapResult or "-")
 		)
 		return used, state
 	end

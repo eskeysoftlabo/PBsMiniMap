@@ -2244,16 +2244,18 @@ function addon:Initialize()
 		ZO_WorldMap:SetDimensionConstraints(wantW, wantH, wantW, wantH)
 		ZO_WorldMap:SetDimensions(wantW, wantH)
 
-		-- Scroll viewport: sized, but NOT pinned.
+		-- Scroll viewport: pinned as well.
 		--
-		-- The visible map only changes size when the scroll does -- leaving it alone made the
-		-- size setting do nothing again. But pinning it the way the outer window is pinned
-		-- left the map's geometry permanently disagreeing with its layout, and since the pan
-		-- offset is computed from that geometry, the centre landed somewhere else entirely.
-		-- Setting the size while leaving the constraints loose gives the size change without
-		-- fighting the map system for the rest of the frame.
+		-- The visible size is the scroll's, not the outer window's. With loose constraints the
+		-- map system put it back to full size on the next map update, so the minimap looked
+		-- correct until the first step and then snapped to standard map size.
+		--
+		-- Pinning it was blamed for the off-centre view in 1.2.2, but that turned out to be the
+		-- zoom never being applied (it sat at 1.00 regardless of the setting), so the scroll is
+		-- pinned again here. RestoreDefaultMapLayout puts its original constraints back when
+		-- the standard map takes over.
 		if ZO_WorldMapScroll then
-			ZO_WorldMapScroll:SetDimensionConstraints(20, 20, uiWidth, uiHeight)
+			ZO_WorldMapScroll:SetDimensionConstraints(wantW, wantH, wantW, wantH)
 			ZO_WorldMapScroll:SetDimensions(wantW, wantH)
 		end
 
@@ -2294,6 +2296,15 @@ function addon:Initialize()
 		local haveW, haveH = ZO_WorldMap:GetDimensions()
 		if zo_abs(haveW - wantW) > 0.5 or zo_abs(haveH - wantH) > 0.5 then
 			return false
+		end
+
+		-- The scroll is the control whose size is actually visible, so drift there matters
+		-- just as much as drift on the outer window.
+		if ZO_WorldMapScroll then
+			local scrollW, scrollH = ZO_WorldMapScroll:GetDimensions()
+			if zo_abs(scrollW - wantW) > 0.5 or zo_abs(scrollH - wantH) > 0.5 then
+				return false
+			end
 		end
 
 		local uiWidth, uiHeight = GuiRoot:GetDimensions()
@@ -2367,6 +2378,19 @@ function addon:Initialize()
 	-- close on one of those, so each context gets its own setting -- the same split the
 	-- original add-on makes.
 	local MIN_USEFUL_ZOOM = 0.05
+	local function CurrentZoomContext()
+		local contentType = GetMapContentType()
+		if contentType == MAP_CONTENT_BATTLEGROUND then
+			return "bg"
+		elseif contentType == MAP_CONTENT_DUNGEON then
+			return "dungeon"
+		elseif GetMapType() == MAPTYPE_SUBZONE then
+			return "subzone"
+		end
+		return "outdoor"
+	end
+	addon.CurrentZoomContext = CurrentZoomContext
+
 	local function CurrentZoomLevel(account)
 		-- Zero means the whole map fits the window, so there is nothing to pan and the player
 		-- cannot be centred. Treat it as the floor rather than letting the feature quietly
@@ -2419,6 +2443,7 @@ function addon:Initialize()
 		if not DoesCurrentMapMatchMapForPlayerLocation() then
 			SetMapToPlayerLocation()
 			lastPlayerX, lastPlayerY = -1, -1
+			zoomAttempts = 0
 			disturbed = true
 		end
 
@@ -2834,7 +2859,7 @@ local function InitMemoryWatchdog()
 		-- State half of the line: everything the suppression logic depends on.
 		local state =
 			string.format(
-			"front=%s (kb=%s gp=%s api=%s gpMode=%s) dormant=%s attached=%s mode=%s mapType=%s zoom=%.2f/%.2f player=%.3f,%.3f onOwnMap=%s size=%dx%d",
+			"front=%s (kb=%s gp=%s api=%s gpMode=%s) dormant=%s attached=%s mode=%s mapType=%s zoom=%.2f/%.2f(%s) player=%.3f,%.3f onOwnMap=%s size=%dx%d scroll=%dx%d",
 			Bool(inFront),
 			Bool(WORLD_MAP_SCENE and WORLD_MAP_SCENE:IsShowing()),
 			Bool(GAMEPAD_WORLD_MAP_SCENE and GAMEPAD_WORLD_MAP_SCENE:IsShowing()),
@@ -2846,11 +2871,14 @@ local function InitMemoryWatchdog()
 			tostring(GetMapType()),
 			addon.panZoom and (addon.panZoom:GetCurrentNormalizedZoom() or -1) or -1,
 			addon.CurrentZoomLevel and addon:CurrentZoomLevel() or -1,
+			addon.CurrentZoomContext and addon.CurrentZoomContext() or "?",
 			select(1, GetMapPlayerPosition("player")) or -1,
 			select(2, GetMapPlayerPosition("player")) or -1,
 			Bool(DoesCurrentMapMatchMapForPlayerLocation()),
 			zo_round(select(1, ZO_WorldMap:GetDimensions())),
-			zo_round(select(2, ZO_WorldMap:GetDimensions()))
+			zo_round(select(2, ZO_WorldMap:GetDimensions())),
+			ZO_WorldMapScroll and zo_round(select(1, ZO_WorldMapScroll:GetDimensions())) or -1,
+			ZO_WorldMapScroll and zo_round(select(2, ZO_WorldMapScroll:GetDimensions())) or -1
 		)
 		return used, state
 	end

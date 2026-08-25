@@ -2215,18 +2215,24 @@ function addon:Initialize()
 		local wantW = account.width or 304
 		local wantH = account.height or 368
 
-		-- The resize start/stop pair is what makes the anchor change actually take effect,
-		-- so it stays. But ZO_WorldMap_OnResizeStop re-applies the size held by the *current*
-		-- map mode -- which on this path is the standard map's, not ours -- so the size set
-		-- before it is discarded. That is why position moved and size did not. Re-assert the
-		-- size after the stop, and size the scroll viewport too, since ZO_WorldMap fits itself
-		-- around its children (hence the original add-on's SetExcludeFromResizeToFitExtents).
+		-- Pin the size with the constraints rather than only setting it.
+		--
+		-- Re-applying the size after the fact was never going to hold: the game resizes the
+		-- window later in the same frame than our update runs, so the frame was drawn at the
+		-- standard size and only corrected on the next one -- the two sizes alternating at
+		-- frame rate. Setting min and max to the same value means any size the game asks for
+		-- is clamped to ours, so there is nothing left to correct. RestoreDefaultMapLayout
+		-- puts the original constraints back when the standard map takes over.
+		--
+		-- The resize start/stop pair stays: it is what makes the anchor change take effect.
+		-- ZO_WorldMap_OnResizeStop re-applies the size held by the *current* map mode, which
+		-- on this path is the standard map's, so the size is asserted again afterwards.
 		if ZO_WorldMap_OnResizeStart then
 			ZO_WorldMap_OnResizeStart(ZO_WorldMap)
 		end
 
 		ZO_WorldMap:ClearAnchors()
-		ZO_WorldMap:SetDimensionConstraints(20, 20, uiWidth, uiHeight)
+		ZO_WorldMap:SetDimensionConstraints(wantW, wantH, wantW, wantH)
 		ZO_WorldMap:SetAnchor(CENTER, nil, CENTER, account.x or (uiWidth / 2 - 304), account.y or (uiHeight / 2 - 368))
 		ZO_WorldMap:SetDimensions(wantW, wantH)
 
@@ -2234,9 +2240,10 @@ function addon:Initialize()
 			ZO_WorldMap_OnResizeStop(ZO_WorldMap)
 		end
 
+		ZO_WorldMap:SetDimensionConstraints(wantW, wantH, wantW, wantH)
 		ZO_WorldMap:SetDimensions(wantW, wantH)
 		if ZO_WorldMapScroll then
-			ZO_WorldMapScroll:SetDimensionConstraints(20, 20, uiWidth, uiHeight)
+			ZO_WorldMapScroll:SetDimensionConstraints(wantW, wantH, wantW, wantH)
 			ZO_WorldMapScroll:SetDimensions(wantW, wantH)
 		end
 

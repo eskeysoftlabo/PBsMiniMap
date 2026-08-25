@@ -416,6 +416,41 @@ function addon:InitSettings()
 		settings:AddSetting(
 			{
 				type = LibHarvensAddonSettings.ST_CHECKBOX,
+				label = GetString(SI_PBSMINIMAP_LITE_ZONE_TITLE),
+				tooltip = GetString(SI_PBSMINIMAP_LITE_ZONE_TITLE_TOOLTIP),
+				default = self.accountDefaults.showZoneTitle,
+				getFunction = function()
+					return self.account.showZoneTitle
+				end,
+				setFunction = function(value)
+					self.account.showZoneTitle = value
+					self:UpdateZoneTitle()
+				end
+			}
+		)
+		settings:AddSetting(
+			{
+				type = LibHarvensAddonSettings.ST_SLIDER,
+				label = GetString(SI_PBSMINIMAP_LITE_ZONE_TITLE_SIZE),
+				tooltip = GetString(SI_PBSMINIMAP_LITE_ZONE_TITLE_SIZE_TOOLTIP),
+				min = 12,
+				max = 48,
+				step = 1,
+				default = self.accountDefaults.zoneTitleSize,
+				format = "%d",
+				unit = "",
+				getFunction = function()
+					return self.account.zoneTitleSize or 24
+				end,
+				setFunction = function(value)
+					self.account.zoneTitleSize = value
+					self:UpdateZoneTitle()
+				end
+			}
+		)
+		settings:AddSetting(
+			{
+				type = LibHarvensAddonSettings.ST_CHECKBOX,
 				label = GetString(SI_PBSMINIMAP_LITE_HIDE_LABELS),
 				tooltip = GetString(SI_PBSMINIMAP_LITE_HIDE_LABELS_TOOLTIP),
 				default = self.accountDefaults.hideMapLabels,

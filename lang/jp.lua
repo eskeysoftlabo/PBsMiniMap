@@ -134,6 +134,10 @@ local strings = {
 	SI_PBSMINIMAP_SHOW_ON_TOP_TOOLTIP = "ミニマップを他のUI要素より前面に表示します。",
 	SI_PBSMINIMAP_LITE_DUMP_LABELS = "地名ラベルを調査",
 	SI_PBSMINIMAP_LITE_DUMP_LABELS_TOOLTIP = "現在マップ上で文字を表示しているラベルを、コントロール名つきでチャットに出力します。地名がまだ消えない場合のみ使用してください。",
+	SI_PBSMINIMAP_LITE_ZONE_TITLE = "エリア名を表示",
+	SI_PBSMINIMAP_LITE_ZONE_TITLE_TOOLTIP = "現在いるエリアの名前を、ミニマップのすぐ上に表示します。",
+	SI_PBSMINIMAP_LITE_ZONE_TITLE_SIZE = "エリア名の文字サイズ",
+	SI_PBSMINIMAP_LITE_ZONE_TITLE_SIZE_TOOLTIP = "ミニマップ上部に表示するエリア名の文字サイズです。",
 }
 
 for stringId, stringValue in pairs(strings) do

@@ -134,6 +134,10 @@ local strings = {
 	SI_PBSMINIMAP_LITE_PREVIEW_TOOLTIP = "Show the map here while adjusting size and position.",
 	SI_PBSMINIMAP_LITE_DUMP_LABELS = "Report map labels",
 	SI_PBSMINIMAP_LITE_DUMP_LABELS_TOOLTIP = "Print every label currently drawing text on the map to chat, with its control name. Only needed if a place name still shows through.",
+	SI_PBSMINIMAP_LITE_ZONE_TITLE = "Show zone name",
+	SI_PBSMINIMAP_LITE_ZONE_TITLE_TOOLTIP = "Show the name of the area you are in, just above the minimap.",
+	SI_PBSMINIMAP_LITE_ZONE_TITLE_SIZE = "Zone name size",
+	SI_PBSMINIMAP_LITE_ZONE_TITLE_SIZE_TOOLTIP = "Text size of the zone name above the minimap.",
 }
 
 for stringId, stringValue in pairs(strings) do

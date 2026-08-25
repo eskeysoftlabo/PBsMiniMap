@@ -181,6 +181,76 @@ function addon:HidePinLabels()
 	end
 end
 
+-- Zone name above the minimap.
+--
+-- A control of our own rather than ZO_WorldMapTitle: that one belongs to the map window and
+-- is driven by InitMiniMap, which the lite path skips. It is also parented to GuiRoot rather
+-- than to ZO_WorldMap, so the opacity setting does not fade the text along with the map, and
+-- anchored to the map window so it follows wherever the minimap is put.
+local zoneTitle
+local lastTitleFontSize
+
+function addon:EnsureZoneTitle()
+	if zoneTitle or not ZO_WorldMap then
+		return zoneTitle
+	end
+	local wm = GetWindowManager()
+	if not wm then
+		return nil
+	end
+	-- The name matters: the label-hiding pass skips anything of ours by name.
+	zoneTitle = wm:CreateControl("PBsMiniMapZoneTitle", GuiRoot, CT_LABEL)
+	zoneTitle:SetHorizontalAlignment(TEXT_ALIGN_CENTER)
+	zoneTitle:SetVerticalAlignment(TEXT_ALIGN_BOTTOM)
+	zoneTitle:SetAnchor(BOTTOM, ZO_WorldMap, TOP, 0, -2)
+	zoneTitle:SetHidden(true)
+	return zoneTitle
+end
+
+local function CurrentZoneName()
+	local name = GetPlayerActiveSubzoneName()
+	if not name or name == "" then
+		name = GetPlayerLocationName()
+	end
+	if not name or name == "" then
+		name = GetMapName()
+	end
+	if not name or name == "" then
+		name = GetZoneNameByIndex(GetUnitZoneIndex("player"))
+	end
+	return name or ""
+end
+
+function addon:UpdateZoneTitle()
+	local account = self.account
+	if not account then
+		return
+	end
+
+	local wanted = account.showZoneTitle and not self.dormant and (self.initLevel or 0) < 3 and account.enableMap
+	if not wanted then
+		if zoneTitle then
+			zoneTitle:SetHidden(true)
+		end
+		return
+	end
+
+	local control = self:EnsureZoneTitle()
+	if not control then
+		return
+	end
+
+	local size = account.zoneTitleSize or 24
+	if lastTitleFontSize ~= size then
+		lastTitleFontSize = size
+		local face = ZO_IsConsoleOrGameCoreUI() and "$(GAMEPAD_BOLD_FONT)" or "$(BOLD_FONT)"
+		control:SetFont(string.format("%s|%d|soft-shadow-thick", face, size))
+	end
+
+	control:SetText(ZO_CachedStrFormat(SI_ZONE_NAME, CurrentZoneName()))
+	control:SetHidden(false)
+end
+
 -- Walk the map area and hide every label that is actually rendering text.
 --
 -- Going through pinManager:GetActiveObjects() was not enough -- names like "Elden Root
@@ -334,6 +404,9 @@ function addon:SetDormant(value)
 		if self.ApplyLiteAlpha then
 			self:ApplyLiteAlpha()
 		end
+		if self.UpdateZoneTitle then
+			self:UpdateZoneTitle()
+		end
 		-- Labels were hidden one by one; let the game rebuild the pins rather than trying to
 		-- work out which ones it wanted visible.
 		if (self.initLevel or 0) < 3 and self.account and self.account.hideMapLabels then
@@ -373,6 +446,9 @@ function addon:SetDormant(value)
 		end
 		if ZO_WorldMap_HandlePinExit then
 			ZO_WorldMap_HandlePinExit()
+		end
+		if self.UpdateZoneTitle then
+			self:UpdateZoneTitle()
 		end
 		-- ShowClock only exists once InitMiniMap has run (see initLevel).
 		if self.ShowClock and self.account and self.account.showClock then
@@ -2209,6 +2285,8 @@ function addon:Initialize()
 		followPlayer = true,
 		liteAlpha = 100,
 		hideMapLabels = true,
+		showZoneTitle = true,
+		zoneTitleSize = 24,
 		-- Scale relative to the map's native resolution, same meaning as the original's zoom
 		-- settings (and the same defaults). Renamed from the old liteZoom* keys because those
 		-- held 0..1 values with a completely different meaning.
@@ -2611,6 +2689,7 @@ function addon:Initialize()
 	function addon:StartLiteZoneWatch()
 		local function resync()
 			self:RequestMapResync()
+			self:UpdateZoneTitle()
 		end
 		em:RegisterForEvent(self.name .. "LiteZone", EVENT_ZONE_CHANGED, resync)
 		em:RegisterForEvent(self.name .. "LiteActivated", EVENT_PLAYER_ACTIVATED, resync)
@@ -3149,6 +3228,7 @@ function addon:Initialize()
 					self:HidePinLabels()
 					self:HideMapAreaLabels()
 				end
+				self:UpdateZoneTitle()
 			end
 		)
 	end

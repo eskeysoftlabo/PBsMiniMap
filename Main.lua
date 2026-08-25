@@ -238,26 +238,11 @@ function addon:UpdateZoneTitle()
 		return
 	end
 
-	-- Parented to GuiRoot rather than to the map, so it does not disappear with it: the map
-	-- being hidden has to be checked explicitly or the name is left floating over menus.
+	-- The label is anchored above the map window rather than inside it, so whether the map is
+	-- showing has to be checked here: otherwise the name is left floating once the minimap is
+	-- hidden.
 	local mapShowing = ZO_WorldMap and not ZO_WorldMap:IsHidden()
 	local wanted = account.showZoneTitle and mapShowing and not self.dormant and (self.initLevel or 0) < 3 and account.enableMap
-
-	-- Reported on every change of state rather than once ever: a single report fires while
-	-- the map is still loading, says nothing useful, and is gone by the time anyone looks.
-	local state =
-		string.format(
-		"setting=%s mapShowing=%s dormant=%s level=%s name=%s",
-		tostring(account.showZoneTitle),
-		tostring(mapShowing),
-		tostring(self.dormant),
-		tostring(self.initLevel),
-		tostring(CurrentZoneName())
-	)
-	if state ~= self.zoneTitleState then
-		self.zoneTitleState = state
-		df("[PBsMiniMap] zone title: %s", state)
-	end
 
 	if not wanted then
 		if zoneTitle then
@@ -296,20 +281,6 @@ function addon:UpdateZoneTitle()
 	control:SetText(text)
 	control:SetHidden(text == "")
 
-	local w, h = control:GetDimensions()
-	local shown =
-		string.format(
-		"text=%s size=%.0fx%.0f hidden=%s parent=%s",
-		tostring(text),
-		w,
-		h,
-		tostring(control:IsHidden()),
-		tostring(control:GetParent() and control:GetParent():GetName())
-	)
-	if shown ~= self.zoneTitleShownState then
-		self.zoneTitleShownState = shown
-		df("[PBsMiniMap] zone title shown: %s", shown)
-	end
 end
 
 -- Walk the map area and hide every label that is actually rendering text.

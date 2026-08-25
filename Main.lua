@@ -186,6 +186,9 @@ function addon:SetDormant(value)
 		if (self.initLevel or 0) < 3 and self.RestoreDefaultMapLayout then
 			self:RestoreDefaultMapLayout()
 		end
+		if self.panZoom and self.orgAllowPanPastMapEdge ~= nil then
+			self.panZoom.allowPanPastMapEdge = self.orgAllowPanPastMapEdge
+		end
 	else
 		if self.SetMinimapAttached and self.account and self.account.enableMap then
 			self:SetMinimapAttached(true)
@@ -198,6 +201,11 @@ function addon:SetDormant(value)
 		self:SetHotPathHooksActive(true)
 		if self.SetWorldMapUpdateHandler then
 			self:SetWorldMapUpdateHandler(true)
+		end
+		-- Minimap is up again: let the view sit past the map edge so the player marker can stay
+		-- in the middle even at the border of a small map.
+		if (self.initLevel or 0) < 3 and self.panZoom and self.orgAllowPanPastMapEdge ~= nil then
+			self.panZoom.allowPanPastMapEdge = true
 		end
 		-- ShowClock only exists once InitMiniMap has run (see initLevel).
 		if self.ShowClock and self.account and self.account.showClock then
@@ -2551,6 +2559,16 @@ function addon:Initialize()
 	end
 
 	function addon:InitLiteHooks()
+		-- Our focus offsets are deliberately unclamped, but the pan machinery clamps again on
+		-- its own unless this is set. Captured here so dormancy can hand the original value
+		-- back to the standard map.
+		if self.panZoom and self.orgAllowPanPastMapEdge == nil then
+			self.orgAllowPanPastMapEdge = self.panZoom.allowPanPastMapEdge or false
+			-- Apply it now as well: dormancy only toggles it on a transition, and at startup
+			-- there has not been one.
+			self.panZoom.allowPanPastMapEdge = true
+		end
+
 		local orgRefreshMapFrameAnchor
 		orgRefreshMapFrameAnchor =
 			HookHotPath(
@@ -2606,13 +2624,13 @@ function addon:Initialize()
 			local borderSizeN = (curvedTargetZoom - 1) * 0.5
 			local offsetNX, offsetNY = 0.5 + borderSizeN - zoomedNX, 0.5 + borderSizeN - zoomedNY
 
-			-- Clamping is what stops the view sliding off the edge of the map. It also means a
-			-- player standing near an edge is not exactly centred, which is correct and is how
-			-- the original behaves too.
-			if not panZoom.allowPanPastMapEdge then
-				offsetNX, offsetNY = zo_clamp(offsetNX, -borderSizeN, borderSizeN), zo_clamp(offsetNY, -borderSizeN, borderSizeN)
-			end
-
+			-- Deliberately NOT clamped to the map edge.
+			--
+			-- The original keeps the view inside the map, so a player near an edge drifts away
+			-- from the middle and can end up half out of a small subzone map. On a minimap that
+			-- reads as a bug rather than as a feature: the whole point is that the marker sits
+			-- in the middle. Letting the offset run past the edge shows some empty space beyond
+			-- the map instead, which is the better trade here.
 			local units = zo_max(ZO_WorldMapScroll:GetDimensions())
 			return targetNormalizedZoom, offsetNX * units, offsetNY * units
 		end

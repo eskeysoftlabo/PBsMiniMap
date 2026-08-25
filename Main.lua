@@ -2836,21 +2836,34 @@ function addon:Initialize()
 			end
 
 			local targetNormalizedZoom = 1
-			local curvedTargetZoom = panZoom:ComputeCurvedZoom(targetNormalizedZoom)
 
-			local zoomedNX, zoomedNY = normalizedX * curvedTargetZoom, normalizedY * curvedTargetZoom
-			local borderSizeN = (curvedTargetZoom - 1) * 0.5
-			local offsetNX, offsetNY = 0.5 + borderSizeN - zoomedNX, 0.5 + borderSizeN - zoomedNY
-
-			-- Deliberately NOT clamped to the map edge.
+			-- Offsets are a displacement of the map's centre from the viewport's centre, so
+			-- what matters is how large the map is actually drawn -- per axis.
 			--
-			-- The original keeps the view inside the map, so a player near an edge drifts away
-			-- from the middle and can end up half out of a small subzone map. On a minimap that
-			-- reads as a bug rather than as a feature: the whole point is that the marker sits
-			-- in the middle. Letting the offset run past the edge shows some empty space beyond
-			-- the map instead, which is the better trade here.
-			local units = zo_max(ZO_WorldMapScroll:GetDimensions())
-			return targetNormalizedZoom, offsetNX * units, offsetNY * units
+			-- The original derives that from zo_max(ZO_WorldMapScroll:GetDimensions()): the
+			-- longer edge, used for both axes. It gets away with it because it keeps its
+			-- minimap square. Here the window is any size the user picks, so the shorter axis
+			-- was being scaled by the longer one's length and the marker sat off-centre --
+			-- most visibly on a small window, where that error is a bigger share of the view.
+			--
+			-- Measure the rendered map instead. ZO_WorldMapContainer is the map itself and its
+			-- dimensions already include the zoom, so no zoom maths is needed at all.
+			local mapWidth, mapHeight
+			if ZO_WorldMapContainer then
+				mapWidth, mapHeight = ZO_WorldMapContainer:GetDimensions()
+			end
+			if not mapWidth or mapWidth <= 0 or not mapHeight or mapHeight <= 0 then
+				-- Container not laid out yet: fall back to the original's estimate.
+				local units = zo_max(ZO_WorldMapScroll:GetDimensions())
+				local curvedTargetZoom = panZoom:ComputeCurvedZoom(targetNormalizedZoom)
+				mapWidth = units * curvedTargetZoom
+				mapHeight = mapWidth
+			end
+
+			-- Deliberately NOT clamped to the map edge. The original keeps the view inside the
+			-- map, so a player near an edge drifts away from the middle and can end up half out
+			-- of a small subzone map. On a minimap that reads as a bug rather than a feature.
+			return targetNormalizedZoom, (0.5 - normalizedX) * mapWidth, (0.5 - normalizedY) * mapHeight
 		end
 
 		local panZoomClass = getmetatable(ZO_WorldMap_GetPanAndZoom()).__index
@@ -3184,7 +3197,7 @@ local function InitMemoryWatchdog()
 		-- State half of the line: everything the suppression logic depends on.
 		local state =
 			string.format(
-			"front=%s (kb=%s gp=%s api=%s gpMode=%s) dormant=%s attached=%s mode=%s mapType=%s zoom=%.2f/%.2f(%s) player=%.3f,%.3f onOwnMap=%s size=%dx%d scroll=%dx%d follow=%d/%s centre=%d/%s setMap=%s",
+			"front=%s (kb=%s gp=%s api=%s gpMode=%s) dormant=%s attached=%s mode=%s mapType=%s zoom=%.2f/%.2f(%s) player=%.3f,%.3f onOwnMap=%s size=%dx%d scroll=%dx%d follow=%d/%s centre=%d/%s setMap=%s container=%dx%d",
 			Bool(inFront),
 			Bool(WORLD_MAP_SCENE and WORLD_MAP_SCENE:IsShowing()),
 			Bool(GAMEPAD_WORLD_MAP_SCENE and GAMEPAD_WORLD_MAP_SCENE:IsShowing()),
@@ -3208,7 +3221,9 @@ local function InitMemoryWatchdog()
 			tostring(addon.followSkip or "never"),
 			addon.centreCalls or 0,
 			tostring(addon.centreRoute or "none"),
-			tostring(addon.lastSetMapResult or "-")
+			tostring(addon.lastSetMapResult or "-"),
+			ZO_WorldMapContainer and zo_round(select(1, ZO_WorldMapContainer:GetDimensions())) or -1,
+			ZO_WorldMapContainer and zo_round(select(2, ZO_WorldMapContainer:GetDimensions())) or -1
 		)
 		return used, state
 	end

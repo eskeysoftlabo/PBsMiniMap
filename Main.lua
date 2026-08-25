@@ -203,6 +203,13 @@ function addon:EnsureZoneTitle()
 	zoneTitle:SetHorizontalAlignment(TEXT_ALIGN_CENTER)
 	zoneTitle:SetVerticalAlignment(TEXT_ALIGN_BOTTOM)
 	zoneTitle:SetAnchor(BOTTOM, ZO_WorldMap, TOP, 0, -2)
+	-- Explicit colour, draw layer and tier. A fresh control has none of these settled, and as
+	-- a child of GuiRoot it otherwise sits at the bottom of the pile where the rest of the HUD
+	-- can cover it -- which is the likely reason nothing appeared.
+	zoneTitle:SetColor(1, 1, 1, 1)
+	zoneTitle:SetDrawLayer(DL_OVERLAY)
+	zoneTitle:SetDrawTier(DT_HIGH)
+	zoneTitle:SetMouseEnabled(false)
 	zoneTitle:SetHidden(true)
 	return zoneTitle
 end
@@ -227,7 +234,10 @@ function addon:UpdateZoneTitle()
 		return
 	end
 
-	local wanted = account.showZoneTitle and not self.dormant and (self.initLevel or 0) < 3 and account.enableMap
+	-- Parented to GuiRoot rather than to the map, so it does not disappear with it: the map
+	-- being hidden has to be checked explicitly or the name is left floating over menus.
+	local mapShowing = ZO_WorldMap and not ZO_WorldMap:IsHidden()
+	local wanted = account.showZoneTitle and mapShowing and not self.dormant and (self.initLevel or 0) < 3 and account.enableMap
 	if not wanted then
 		if zoneTitle then
 			zoneTitle:SetHidden(true)
@@ -247,8 +257,23 @@ function addon:UpdateZoneTitle()
 		control:SetFont(string.format("%s|%d|soft-shadow-thick", face, size))
 	end
 
-	control:SetText(ZO_CachedStrFormat(SI_ZONE_NAME, CurrentZoneName()))
-	control:SetHidden(false)
+	-- Size it explicitly. A label with no dimensions can end up zero-width, in which case the
+	-- text is there but nothing is drawn. Width follows the minimap so the name sits over it.
+	local width = ZO_WorldMap and ZO_WorldMap:GetWidth() or 0
+	if width < 120 then
+		width = 120
+	end
+	control:SetDimensions(width, size * 1.6)
+
+	local name = CurrentZoneName()
+	local text = ZO_CachedStrFormat(SI_ZONE_NAME, name)
+	if not text or text == "" then
+		-- The zone-name grammar can come back empty for some inputs; the raw name beats
+		-- showing nothing.
+		text = name
+	end
+	control:SetText(text)
+	control:SetHidden(text == "")
 end
 
 -- Walk the map area and hide every label that is actually rendering text.

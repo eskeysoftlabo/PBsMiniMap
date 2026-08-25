@@ -2491,6 +2491,7 @@ function addon:Initialize()
 	-- misbehaves the answer is in the log rather than in another round of guessing.
 	local centreRoute
 	function addon:CentreOnPlayer(normalizedX, normalizedY)
+		self.centreCalls = (self.centreCalls or 0) + 1
 		local panZoom = self.panZoom
 		if not panZoom then
 			return
@@ -2539,22 +2540,34 @@ function addon:Initialize()
 	end
 
 	function addon:ReportCentreRoute(route)
+		self.centreRoute = route
 		if self.account and self.account.debug then
 			df("[PBsMiniMap] centring via %s", tostring(route))
 		end
 	end
 
 	function addon:FollowPlayerTick()
+		self.followTicks = (self.followTicks or 0) + 1
+
 		if self.dormant then
+			self.followSkip = "dormant"
 			return
 		end
 		local account = self.account
 		if not account or not account.followPlayer then
+			self.followSkip = "off"
 			return
 		end
-		if not ZO_WorldMap or ZO_WorldMap:IsHidden() then
+		if not ZO_WorldMap then
+			self.followSkip = "nomap"
 			return
 		end
+		if ZO_WorldMap:IsHidden() then
+			self.followSkip = "hidden"
+			return
+		end
+		self.followSkip = "-"
+
 
 		-- Order matters, and getting it wrong is what caused the centred/not-centred flicker:
 		-- re-asserting the layout runs the map through a resize, which resets the pan offset.
@@ -3023,7 +3036,7 @@ local function InitMemoryWatchdog()
 		-- State half of the line: everything the suppression logic depends on.
 		local state =
 			string.format(
-			"front=%s (kb=%s gp=%s api=%s gpMode=%s) dormant=%s attached=%s mode=%s mapType=%s zoom=%.2f/%.2f(%s) player=%.3f,%.3f onOwnMap=%s size=%dx%d scroll=%dx%d",
+			"front=%s (kb=%s gp=%s api=%s gpMode=%s) dormant=%s attached=%s mode=%s mapType=%s zoom=%.2f/%.2f(%s) player=%.3f,%.3f onOwnMap=%s size=%dx%d scroll=%dx%d follow=%d/%s centre=%d/%s",
 			Bool(inFront),
 			Bool(WORLD_MAP_SCENE and WORLD_MAP_SCENE:IsShowing()),
 			Bool(GAMEPAD_WORLD_MAP_SCENE and GAMEPAD_WORLD_MAP_SCENE:IsShowing()),
@@ -3042,7 +3055,11 @@ local function InitMemoryWatchdog()
 			zo_round(select(1, ZO_WorldMap:GetDimensions())),
 			zo_round(select(2, ZO_WorldMap:GetDimensions())),
 			ZO_WorldMapScroll and zo_round(select(1, ZO_WorldMapScroll:GetDimensions())) or -1,
-			ZO_WorldMapScroll and zo_round(select(2, ZO_WorldMapScroll:GetDimensions())) or -1
+			ZO_WorldMapScroll and zo_round(select(2, ZO_WorldMapScroll:GetDimensions())) or -1,
+			addon.followTicks or 0,
+			tostring(addon.followSkip or "never"),
+			addon.centreCalls or 0,
+			tostring(addon.centreRoute or "none")
 		)
 		return used, state
 	end

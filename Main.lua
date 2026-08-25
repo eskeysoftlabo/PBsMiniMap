@@ -2479,6 +2479,71 @@ function addon:Initialize()
 		return true
 	end
 
+	-- Putting the player in the middle.
+	--
+	-- ZO_WorldMap_JumpToPlayer alone was not doing it: the view stayed where it was and the
+	-- player simply walked out of the middle, which is why it looked right immediately after
+	-- closing the full map and drifted from the first step. It seems to depend on map state we
+	-- do not have on the HUD.
+	--
+	-- Rather than guess at one replacement, try the routes in order of directness and remember
+	-- which one worked. The chosen route is reported once in the debug log, so if this still
+	-- misbehaves the answer is in the log rather than in another round of guessing.
+	local centreRoute
+	function addon:CentreOnPlayer(normalizedX, normalizedY)
+		local panZoom = self.panZoom
+		if not panZoom then
+			return
+		end
+
+		-- 1. Ask the pan machinery for the offsets our own focus override computes, and set
+		-- them directly. This is the most direct route and bypasses map-state gating.
+		if panZoom.GetNormalizedPositionFocusZoomAndOffset and panZoom.SetCurrentOffset then
+			local _, offsetX, offsetY = panZoom:GetNormalizedPositionFocusZoomAndOffset(normalizedX, normalizedY)
+			if offsetX and offsetY then
+				panZoom:SetCurrentOffset(offsetX, offsetY)
+				if centreRoute ~= "SetCurrentOffset" then
+					centreRoute = "SetCurrentOffset"
+					self:ReportCentreRoute(centreRoute)
+				end
+				return
+			end
+		end
+
+		-- 2. Purpose-built jump, if this build has one.
+		if panZoom.JumpToNormalizedPosition then
+			panZoom:JumpToNormalizedPosition(normalizedX, normalizedY)
+			if centreRoute ~= "JumpToNormalizedPosition" then
+				centreRoute = "JumpToNormalizedPosition"
+				self:ReportCentreRoute(centreRoute)
+			end
+			return
+		end
+		if panZoom.PanToNormalizedPosition then
+			panZoom:PanToNormalizedPosition(normalizedX, normalizedY)
+			if centreRoute ~= "PanToNormalizedPosition" then
+				centreRoute = "PanToNormalizedPosition"
+				self:ReportCentreRoute(centreRoute)
+			end
+			return
+		end
+
+		-- 3. The global helper, which is where this started.
+		if ZO_WorldMap_JumpToPlayer then
+			ZO_WorldMap_JumpToPlayer()
+			if centreRoute ~= "ZO_WorldMap_JumpToPlayer" then
+				centreRoute = "ZO_WorldMap_JumpToPlayer"
+				self:ReportCentreRoute(centreRoute)
+			end
+		end
+	end
+
+	function addon:ReportCentreRoute(route)
+		if self.account and self.account.debug then
+			df("[PBsMiniMap] centring via %s", tostring(route))
+		end
+	end
+
 	function addon:FollowPlayerTick()
 		if self.dormant then
 			return
@@ -2530,13 +2595,9 @@ function addon:Initialize()
 		-- disturbed the map, since that is exactly when the pan offset was thrown away.
 		local x, y = GetMapPlayerPosition("player")
 		local moved = x and (zo_abs(x - lastPlayerX) >= 0.00005 or zo_abs(y - lastPlayerY) >= 0.00005)
-		if (moved or disturbed) and ZO_WorldMap_JumpToPlayer then
-			if x then
-				lastPlayerX, lastPlayerY = x, y
-			end
-			-- Jump rather than pan: panning eases towards the player and always lags behind,
-			-- which is not "always centred".
-			ZO_WorldMap_JumpToPlayer()
+		if (moved or disturbed) and x then
+			lastPlayerX, lastPlayerY = x, y
+			self:CentreOnPlayer(x, y)
 		end
 	end
 

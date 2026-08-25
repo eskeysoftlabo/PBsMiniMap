@@ -243,16 +243,20 @@ function addon:UpdateZoneTitle()
 	local mapShowing = ZO_WorldMap and not ZO_WorldMap:IsHidden()
 	local wanted = account.showZoneTitle and mapShowing and not self.dormant and (self.initLevel or 0) < 3 and account.enableMap
 
-	if not self.zoneTitleReported then
-		self.zoneTitleReported = true
-		df(
-			"[PBsMiniMap] zone title: setting=%s mapShowing=%s dormant=%s level=%s name=%s",
-			tostring(account.showZoneTitle),
-			tostring(mapShowing),
-			tostring(self.dormant),
-			tostring(self.initLevel),
-			tostring(CurrentZoneName())
-		)
+	-- Reported on every change of state rather than once ever: a single report fires while
+	-- the map is still loading, says nothing useful, and is gone by the time anyone looks.
+	local state =
+		string.format(
+		"setting=%s mapShowing=%s dormant=%s level=%s name=%s",
+		tostring(account.showZoneTitle),
+		tostring(mapShowing),
+		tostring(self.dormant),
+		tostring(self.initLevel),
+		tostring(CurrentZoneName())
+	)
+	if state ~= self.zoneTitleState then
+		self.zoneTitleState = state
+		df("[PBsMiniMap] zone title: %s", state)
 	end
 
 	if not wanted then
@@ -292,10 +296,19 @@ function addon:UpdateZoneTitle()
 	control:SetText(text)
 	control:SetHidden(text == "")
 
-	if not self.zoneTitleShownReported then
-		self.zoneTitleShownReported = true
-		local w, h = control:GetDimensions()
-		df("[PBsMiniMap] zone title shown: text=%s size=%.0fx%.0f hidden=%s", tostring(text), w, h, tostring(control:IsHidden()))
+	local w, h = control:GetDimensions()
+	local shown =
+		string.format(
+		"text=%s size=%.0fx%.0f hidden=%s parent=%s",
+		tostring(text),
+		w,
+		h,
+		tostring(control:IsHidden()),
+		tostring(control:GetParent() and control:GetParent():GetName())
+	)
+	if shown ~= self.zoneTitleShownState then
+		self.zoneTitleShownState = shown
+		df("[PBsMiniMap] zone title shown: %s", shown)
 	end
 end
 

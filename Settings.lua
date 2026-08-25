@@ -410,11 +410,11 @@ function addon:InitSettings()
 					type = LibHarvensAddonSettings.ST_SLIDER,
 					label = label,
 					tooltip = tooltip,
-					-- Floor of 0.05 rather than 0: at 0 the whole map fits the window, there is
-					-- no pan room at all, and "keep the player centred" silently stops working.
-					min = 0.05,
-					max = 1,
-					step = 0.01,
+					-- Scale relative to the map's native resolution, not a 0..1 position -- see
+					-- AdjustLiteZoom in Main.lua. Higher means more magnified.
+					min = 0.1,
+					max = 2,
+					step = 0.05,
 					default = self.accountDefaults[key],
 					format = "%.2f",
 					unit = "",
@@ -433,23 +433,23 @@ function addon:InitSettings()
 
 		addZoomSetting(
 			"Zoom: outdoors",
-			"liteZoom",
-			"Zoom used in the open world. Centring only shows once this is high enough that the map is larger than the window - at 0 the whole zone fits and there is nothing to pan. Applies immediately."
+			"liteScale",
+			"Magnification in the open world, relative to the map's native resolution. Higher shows a smaller area in more detail. Applies immediately."
 		)
 		addZoomSetting(
 			"Zoom: buildings & cities",
-			"liteZoomSubZone",
-			"Zoom used inside buildings, houses and city maps. These maps are much smaller, so a lower value here keeps the area around the player visible."
+			"liteScaleSubZone",
+			"Magnification inside buildings, houses and city maps. These maps are much smaller, so a lower value here keeps the area around the player visible."
 		)
 		addZoomSetting(
 			"Zoom: dungeons",
-			"liteZoomDungeon",
-			"Zoom used inside dungeons and trials."
+			"liteScaleDungeon",
+			"Magnification inside dungeons and trials."
 		)
 		addZoomSetting(
 			"Zoom: battlegrounds",
-			"liteZoomBattleground",
-			"Zoom used in battlegrounds."
+			"liteScaleBattleground",
+			"Magnification in battlegrounds."
 		)
 		settings:AddSetting(
 			{

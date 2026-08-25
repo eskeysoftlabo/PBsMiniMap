@@ -2032,10 +2032,13 @@ function addon:Initialize()
 		initLevel = 2,
 		miniPart = 3,
 		followPlayer = true,
-		liteZoom = 0.5,
-		liteZoomSubZone = 0.2,
-		liteZoomDungeon = 0.3,
-		liteZoomBattleground = 0.3,
+		-- Scale relative to the map's native resolution, same meaning as the original's zoom
+		-- settings (and the same defaults). Renamed from the old liteZoom* keys because those
+		-- held 0..1 values with a completely different meaning.
+		liteScale = 1.3,
+		liteScaleSubZone = 1.0,
+		liteScaleDungeon = 0.7,
+		liteScaleBattleground = 0.7,
 		zoom = 1.3,
 		mountedZoom = 1,
 		subZoneZoom = 1,
@@ -2365,10 +2368,11 @@ function addon:Initialize()
 	-- Everything here is gated on "not dormant", so none of it runs while the standard World
 	-- Map is in front -- the full Tamriel view stays untouched.
 	local lastPlayerX, lastPlayerY = -1, -1
-	local lastZoomRequest, zoomAttempts = nil, 0
 	function addon:ResetFollowState()
 		lastPlayerX, lastPlayerY = -1, -1
-		lastZoomRequest, zoomAttempts = nil, 0
+		if self.ResetLiteZoomState then
+			self:ResetLiteZoomState()
+		end
 	end
 
 	-- Which zoom setting applies right now.
@@ -2377,7 +2381,19 @@ function addon:Initialize()
 	-- dungeon is MAP_CONTENT_DUNGEON). A zoom level that frames a whole zone nicely is far too
 	-- close on one of those, so each context gets its own setting -- the same split the
 	-- original add-on makes.
-	local MIN_USEFUL_ZOOM = 0.05
+	-- Zoom on a small window is not set through SetCurrentNormalizedZoom.
+	--
+	-- That call is gated, and even when it is not, normalized zoom is a position inside the
+	-- map's allowed zoom range -- a range the game computed for a full-screen map. In a 314px
+	-- window that range is meaningless, which is why the reading sat at 1.00 no matter what
+	-- was requested and an arbitrary magnified corner was on screen.
+	--
+	-- The original add-on does it the other way round: it computes what the maximum zoom
+	-- should be for this window from the map's real tile resolution, installs it with
+	-- SetMapZoomMinMax, and leaves the normalized zoom at maximum. The setting is therefore a
+	-- scale relative to the map's native resolution, not a 0..1 position. Same approach here.
+	local MIN_SCALE = 0.1
+
 	local function CurrentZoomContext()
 		local contentType = GetMapContentType()
 		if contentType == MAP_CONTENT_BATTLEGROUND then
@@ -2391,28 +2407,68 @@ function addon:Initialize()
 	end
 	addon.CurrentZoomContext = CurrentZoomContext
 
-	local function CurrentZoomLevel(account)
-		-- Zero means the whole map fits the window, so there is nothing to pan and the player
-		-- cannot be centred. Treat it as the floor rather than letting the feature quietly
-		-- do nothing -- a saved 0 from an earlier build would otherwise stay broken forever.
+	local function CurrentScale(account)
 		local function clamp(value)
-			if not value or value < MIN_USEFUL_ZOOM then
-				return MIN_USEFUL_ZOOM
+			if not value or value < MIN_SCALE then
+				return MIN_SCALE
 			end
 			return value
 		end
-		local contentType = GetMapContentType()
-		if contentType == MAP_CONTENT_BATTLEGROUND then
-			return clamp(account.liteZoomBattleground or account.liteZoom)
-		elseif contentType == MAP_CONTENT_DUNGEON then
-			return clamp(account.liteZoomDungeon or account.liteZoom)
-		elseif GetMapType() == MAPTYPE_SUBZONE then
-			return clamp(account.liteZoomSubZone or account.liteZoom)
+		local context = CurrentZoomContext()
+		if context == "bg" then
+			return clamp(account.liteScaleBattleground or account.liteScale)
+		elseif context == "dungeon" then
+			return clamp(account.liteScaleDungeon or account.liteScale)
+		elseif context == "subzone" then
+			return clamp(account.liteScaleSubZone or account.liteScale)
 		end
-		return clamp(account.liteZoom)
+		return clamp(account.liteScale)
 	end
 	addon.CurrentZoomLevel = function(self)
-		return CurrentZoomLevel(self.account)
+		return CurrentScale(self.account)
+	end
+
+	local lastMaxZoom, lastZoomW, lastZoomH, lastZoomContext = nil, -1, -1, nil
+	function addon:ResetLiteZoomState()
+		lastMaxZoom, lastZoomW, lastZoomH, lastZoomContext = nil, -1, -1, nil
+	end
+
+	-- Returns true when it changed the zoom range, i.e. when the pan needs re-centring.
+	function addon:AdjustLiteZoom()
+		local account = self.account
+		local panZoom = self.panZoom
+		if not account or not panZoom or not ZO_WorldMapScroll then
+			return false
+		end
+
+		local w, h = ZO_WorldMapScroll:GetDimensions()
+		w, h = zo_round(w), zo_round(h)
+		local mapAreaUIUnits = zo_min(w, h)
+		if mapAreaUIUnits < 1 then
+			return false
+		end
+
+		local context = CurrentZoomContext()
+		local targetScale = CurrentScale(account)
+
+		local numTiles = GetMapNumTiles()
+		local tilePixelWidth = ZO_WorldMapContainer1 and ZO_WorldMapContainer1:GetTextureFileDimensions() or 1
+		local totalPixels = numTiles * tilePixelWidth
+		local mapAreaPixels = mapAreaUIUnits * GetUIGlobalScale()
+		if mapAreaPixels < 1 then
+			mapAreaPixels = 1
+		end
+
+		local r = zo_max(w, h) / mapAreaUIUnits
+		local maxZoom = math.floor((totalPixels / mapAreaPixels - r) * 500 * targetScale) / 500 + r
+
+		if lastMaxZoom == maxZoom and lastZoomW == w and lastZoomH == h and lastZoomContext == context then
+			return false
+		end
+		lastMaxZoom, lastZoomW, lastZoomH, lastZoomContext = maxZoom, w, h, context
+
+		panZoom:SetMapZoomMinMax(panZoom:ComputeMinZoom(), maxZoom)
+		return true
 	end
 
 	function addon:FollowPlayerTick()
@@ -2443,41 +2499,15 @@ function addon:Initialize()
 		if not DoesCurrentMapMatchMapForPlayerLocation() then
 			SetMapToPlayerLocation()
 			lastPlayerX, lastPlayerY = -1, -1
-			zoomAttempts = 0
 			disturbed = true
 		end
 
 		-- 2. Hold the requested zoom. Re-asserted rather than set once, because the game
 		-- resets it on map changes.
-		local panZoom = self.panZoom
-		local wantZoom = CurrentZoomLevel(account)
-		if panZoom and wantZoom then
-			local current = panZoom:GetCurrentNormalizedZoom()
-			if not current or zo_abs(current - wantZoom) > 0.005 then
-				if wantZoom ~= lastZoomRequest then
-					-- A new target: always worth trying, and it resets the give-up counter.
-					lastZoomRequest, zoomAttempts = wantZoom, 0
-				end
-				-- Safety valve. If the game will not accept the zoom, asking again every frame
-				-- is a tug of war that never lets the map finish an update -- which is what
-				-- stopped the player pin from ever appearing. Try a few times, then leave it.
-				if zoomAttempts < 10 then
-					zoomAttempts = zoomAttempts + 1
-					panZoom:SetCurrentNormalizedZoom(wantZoom)
-
-					-- The public setter is gated on the map being in a mode the game considers
-					-- zoomable, which the HUD is not; without a custom map mode of our own the
-					-- request was simply dropped and the zoom sat at maximum. Fall back to the
-					-- internal setter, which is the same one the original add-on reaches for.
-					local applied = panZoom:GetCurrentNormalizedZoom()
-					if (not applied or zo_abs(applied - wantZoom) > 0.005) and panZoom.SetCurrentNormalizedZoomInternal then
-						panZoom:SetCurrentNormalizedZoomInternal(wantZoom)
-					end
-					disturbed = true
-				end
-			else
-				zoomAttempts = 0
-			end
+		-- 2. Hold the zoom range for this window. Only does work when the window size, the
+		-- map or the applicable setting actually changed.
+		if self:AdjustLiteZoom() then
+			disturbed = true
 		end
 
 		-- 3. Restore our size and position. Only touches anything when it has actually

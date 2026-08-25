@@ -2896,6 +2896,35 @@ local function InitMemoryWatchdog()
 		end
 	)
 
+	-- One-shot dump of what ZO_MapPanAndZoom actually offers. Every zoom/pan problem so far has
+	-- come from guessing at this API from the outside; with the real list in hand the next fix
+	-- can be chosen rather than tried.
+	if account.debug then
+		local panZoom = addon.panZoom
+		local meta = panZoom and getmetatable(panZoom)
+		local index = meta and meta.__index
+		if type(index) == "table" then
+			local names = {}
+			for key, value in pairs(index) do
+				if type(value) == "function" then
+					names[#names + 1] = tostring(key)
+				end
+			end
+			table.sort(names)
+			DebugOut("[PBsMiniMap] panZoom methods: %s", table.concat(names, ", "))
+		end
+		if panZoom then
+			local fields = {}
+			for key, value in pairs(panZoom) do
+				if type(value) ~= "function" and type(value) ~= "table" then
+					fields[#fields + 1] = string.format("%s=%s", tostring(key), tostring(value))
+				end
+			end
+			table.sort(fields)
+			DebugOut("[PBsMiniMap] panZoom fields: %s", table.concat(fields, ", "))
+		end
+	end
+
 	Emit("startup")
 end
 

@@ -237,6 +237,7 @@ function addon:InitSettings()
 				self:ResetLiteLayoutBackoff()
 			end
 			self:ApplyLiteMinimapLayout()
+			self:ApplyLiteAlpha()
 			-- The maintenance tick skips a hidden window; refresh so the preview follows too.
 			if self.litePreviewAdded then
 				WORLD_MAP_FRAGMENT:Refresh()
@@ -389,6 +390,26 @@ function addon:InitSettings()
 				setFunction = function(value)
 					self.account.y = value
 					applyLayout()
+				end
+			}
+		)
+		settings:AddSetting(
+			{
+				type = LibHarvensAddonSettings.ST_SLIDER,
+				label = "Opacity",
+				tooltip = "How solid the minimap is. Applies to the map, its pins and its frame together, and only while the minimap is on the HUD -- the full map is always drawn solid.",
+				min = 10,
+				max = 100,
+				step = 5,
+				default = self.accountDefaults.liteAlpha,
+				format = "%d",
+				unit = "%",
+				getFunction = function()
+					return self.account.liteAlpha or 100
+				end,
+				setFunction = function(value)
+					self.account.liteAlpha = value
+					self:ApplyLiteAlpha()
 				end
 			}
 		)

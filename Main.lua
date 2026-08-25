@@ -208,6 +208,9 @@ function addon:SetDormant(value)
 		if self.orgAllowPanPastMapEdge ~= nil then
 			self:SetAllowPanPastMapEdge(self.orgAllowPanPastMapEdge)
 		end
+		if self.ApplyLiteAlpha then
+			self:ApplyLiteAlpha()
+		end
 	else
 		if self.SetMinimapAttached and self.account and self.account.enableMap then
 			self:SetMinimapAttached(true)
@@ -225,6 +228,9 @@ function addon:SetDormant(value)
 		-- in the middle even at the border of a small map.
 		if (self.initLevel or 0) < 3 and self.orgAllowPanPastMapEdge ~= nil then
 			self:SetAllowPanPastMapEdge(true)
+		end
+		if self.ApplyLiteAlpha then
+			self:ApplyLiteAlpha()
 		end
 		-- ShowClock only exists once InitMiniMap has run (see initLevel).
 		if self.ShowClock and self.account and self.account.showClock then
@@ -2059,6 +2065,7 @@ function addon:Initialize()
 		initLevel = 2,
 		miniPart = 3,
 		followPlayer = true,
+		liteAlpha = 100,
 		-- Scale relative to the map's native resolution, same meaning as the original's zoom
 		-- settings (and the same defaults). Renamed from the old liteZoom* keys because those
 		-- held 0..1 values with a completely different meaning.
@@ -2290,6 +2297,30 @@ function addon:Initialize()
 		end
 
 		ZO_WorldMap_UpdateMap = orgZO_WorldMap_UpdateMap
+	end
+
+	-- Opacity.
+	--
+	-- Applied to ZO_WorldMap itself, so tiles, pins and frame fade together. The standard map
+	-- shares that control, so full opacity has to be handed back the moment it comes forward --
+	-- same arrangement as the size, position and pan-past-edge settings.
+	function addon:ApplyLiteAlpha()
+		if not ZO_WorldMap then
+			return
+		end
+		local account = self.account
+		if not account then
+			return
+		end
+
+		local wantAlpha = 1
+		if not self.dormant and (self.initLevel or 0) < 3 and account.enableMap then
+			wantAlpha = (account.liteAlpha or 100) / 100
+		end
+
+		if zo_abs((ZO_WorldMap:GetAlpha() or 1) - wantAlpha) > 0.005 then
+			ZO_WorldMap:SetAlpha(wantAlpha)
+		end
 	end
 
 	-- Position only: no resize calls, so it never disturbs the pan offset. Used from the
@@ -2909,6 +2940,7 @@ function addon:Initialize()
 			200,
 			function()
 				self:MaintainLiteMinimapLayout()
+				self:ApplyLiteAlpha()
 			end
 		)
 	end

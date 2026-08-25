@@ -24,7 +24,8 @@ the HUD, so the full Tamriel view stays within the limit.
 
 ## What it does
 
-- Keeps the game's own map visible on the HUD at a chosen size (down to 20x20) and position.
+- Keeps the game's own map visible on the HUD at a chosen size (down to 20x20), position and
+  opacity.
 - Keeps the player centred, panning the map as you travel, and follows you across zones.
 - Restores the game's default size and position the moment the full map is opened, and
   re-applies yours when it is closed.
@@ -40,6 +41,7 @@ Settings live under **PB's MiniMap** (LibHarvensAddonSettings).
 | Mini Map | Master on/off |
 | Width / Height | Minimap size (min 20) |
 | Offset X / Offset Y | Position relative to screen centre |
+| Opacity | How solid the minimap is; the full map stays solid |
 | Follow player | Keep the player centred and pan the map as you move |
 | Zoom: outdoors | Zoom in the open world. Centring needs this above 0 |
 | Zoom: buildings & cities | Zoom on subzone maps, which are much smaller |

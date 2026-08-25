@@ -2327,11 +2327,17 @@ function addon:Initialize()
 			return
 		end
 
+		-- Anything below that changes the map, the zoom or the pan offset makes the game
+		-- re-assert its own frame layout, which is what was blowing the minimap back up to
+		-- full map size. Track it and put our layout back in the same frame.
+		local touchedMap = false
+
 		-- Stay on the player's own map; walking into a new zone otherwise leaves the minimap
 		-- showing the old one.
 		if not DoesCurrentMapMatchMapForPlayerLocation() then
 			SetMapToPlayerLocation()
 			lastPlayerX, lastPlayerY = -1, -1
+			touchedMap = true
 		end
 
 		-- Hold the requested zoom. Re-asserted rather than set once, because the game resets
@@ -2341,20 +2347,31 @@ function addon:Initialize()
 			local current = panZoom:GetCurrentNormalizedZoom()
 			if not current or zo_abs(current - account.liteZoom) > 0.005 then
 				panZoom:SetCurrentNormalizedZoom(account.liteZoom)
+				touchedMap = true
 			end
 		end
 
 		-- Only re-centre when the player actually moved, so standing still costs nothing.
 		local x, y = GetMapPlayerPosition("player")
-		if not x or (zo_abs(x - lastPlayerX) < 0.00005 and zo_abs(y - lastPlayerY) < 0.00005) then
-			return
+		local moved = x and (zo_abs(x - lastPlayerX) >= 0.00005 or zo_abs(y - lastPlayerY) >= 0.00005)
+		if moved then
+			lastPlayerX, lastPlayerY = x, y
+			-- Jump rather than pan: panning eases towards the player and always lags behind,
+			-- which is not "always centred".
+			if ZO_WorldMap_JumpToPlayer then
+				ZO_WorldMap_JumpToPlayer()
+				touchedMap = true
+			end
 		end
-		lastPlayerX, lastPlayerY = x, y
 
-		-- Jump rather than pan: panning eases towards the player and always lags behind, which
-		-- is not "always centred".
-		if ZO_WorldMap_JumpToPlayer then
-			ZO_WorldMap_JumpToPlayer()
+		if touchedMap then
+			-- Waiting for the 200ms maintenance tick was not enough: while moving, the layout
+			-- was knocked out again before that tick ever saw it settled, so every attempt
+			-- looked like a failure and the backoff gave up for good. Clear it and re-assert
+			-- immediately. MaintainLiteMinimapLayout compares first, so a frame where nothing
+			-- actually drifted costs only the comparison.
+			self:ResetLiteLayoutBackoff()
+			self:MaintainLiteMinimapLayout()
 		end
 	end
 

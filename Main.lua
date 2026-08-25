@@ -2240,14 +2240,26 @@ function addon:Initialize()
 			ZO_WorldMap_OnResizeStop(ZO_WorldMap)
 		end
 
+		-- Only the outer window is pinned. Forcing ZO_WorldMapScroll to a size as well left
+		-- the map's own geometry disagreeing with its layout, and the pan offset is computed
+		-- from that geometry -- which is why the centre landed somewhere else entirely. The
+		-- scroll is anchored inside ZO_WorldMap and sizes itself correctly on its own.
 		ZO_WorldMap:SetDimensionConstraints(wantW, wantH, wantW, wantH)
 		ZO_WorldMap:SetDimensions(wantW, wantH)
-		if ZO_WorldMapScroll then
-			ZO_WorldMapScroll:SetDimensionConstraints(wantW, wantH, wantW, wantH)
-			ZO_WorldMapScroll:SetDimensions(wantW, wantH)
-		end
 
 		ZO_WorldMap_UpdateMap = orgZO_WorldMap_UpdateMap
+	end
+
+	-- Position only: no resize calls, so it never disturbs the pan offset. Used from the
+	-- frame-anchor hook, where the game has just re-anchored the window underneath us.
+	function addon:ApplyLiteAnchorOnly()
+		local account = self.account
+		if not account or not ZO_WorldMap then
+			return
+		end
+		local uiWidth, uiHeight = GuiRoot:GetDimensions()
+		ZO_WorldMap:ClearAnchors()
+		ZO_WorldMap:SetAnchor(CENTER, nil, CENTER, account.x or (uiWidth / 2 - 304), account.y or (uiHeight / 2 - 368))
 	end
 
 	-- The game re-anchors and re-sizes ZO_WorldMap on its own (RefreshMapFrameAnchor and the
@@ -2461,11 +2473,15 @@ function addon:Initialize()
 			ZO_WorldMapManager,
 			"RefreshMapFrameAnchor",
 			function(manager, ...)
+				local result = orgRefreshMapFrameAnchor(manager, ...)
 				if LiteMinimapActive() then
-					-- We own the window while the minimap is up.
-					return
+					-- Suppressing this entirely also stopped the internal layout work the pin
+					-- system depends on, and the player pin stopped appearing. Let it run and
+					-- only put our position back afterwards -- the size is already held by the
+					-- dimension constraints, and this touches nothing else.
+					addon:ApplyLiteAnchorOnly()
 				end
-				return orgRefreshMapFrameAnchor(manager, ...)
+				return result
 			end
 		)
 
@@ -2481,9 +2497,13 @@ function addon:Initialize()
 	end
 
 	function addon:StartLiteFollowWatch()
+		-- 10Hz, not every frame. Re-centring drives a map update, and asking for one on every
+		-- single frame never let the previous one finish -- pins are created at the end of
+		-- that cycle, so the player pin never got as far as existing. Ten times a second is
+		-- indistinguishable while walking and leaves the map room to complete its work.
 		EVENT_MANAGER:RegisterForUpdate(
 			self.name .. "LiteFollow",
-			0,
+			100,
 			function()
 				self:FollowPlayerTick()
 			end
@@ -2785,7 +2805,7 @@ local function InitMemoryWatchdog()
 		-- State half of the line: everything the suppression logic depends on.
 		local state =
 			string.format(
-			"front=%s (kb=%s gp=%s api=%s gpMode=%s) dormant=%s attached=%s mode=%s mapType=%s",
+			"front=%s (kb=%s gp=%s api=%s gpMode=%s) dormant=%s attached=%s mode=%s mapType=%s zoom=%.2f/%.2f player=%.3f,%.3f onOwnMap=%s size=%dx%d",
 			Bool(inFront),
 			Bool(WORLD_MAP_SCENE and WORLD_MAP_SCENE:IsShowing()),
 			Bool(GAMEPAD_WORLD_MAP_SCENE and GAMEPAD_WORLD_MAP_SCENE:IsShowing()),
@@ -2794,7 +2814,14 @@ local function InitMemoryWatchdog()
 			Bool(addon.dormant),
 			Bool(addon.minimapAttached),
 			tostring(WORLD_MAP_MANAGER:GetMode()),
-			tostring(GetMapType())
+			tostring(GetMapType()),
+			addon.panZoom and (addon.panZoom:GetCurrentNormalizedZoom() or -1) or -1,
+			addon.CurrentZoomLevel and addon:CurrentZoomLevel() or -1,
+			select(1, GetMapPlayerPosition("player")) or -1,
+			select(2, GetMapPlayerPosition("player")) or -1,
+			Bool(DoesCurrentMapMatchMapForPlayerLocation()),
+			zo_round(select(1, ZO_WorldMap:GetDimensions())),
+			zo_round(select(2, ZO_WorldMap:GetDimensions()))
 		)
 		return used, state
 	end

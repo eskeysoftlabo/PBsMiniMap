@@ -2578,6 +2578,61 @@ function addon:Initialize()
 				return orgCanMapZoom(...) or LiteMinimapActive() or false
 			end
 		)
+
+		-- Centring the player needs this one too.
+		--
+		-- ZO_WorldMap_JumpToPlayer does not position the map itself: it asks the pan machinery
+		-- to focus a normalized position, and the machinery works out the offsets through
+		-- GetNormalizedPositionFocusZoomAndOffset. Left as the game's own version, that returns
+		-- offsets that frame the map the way the full-screen map wants -- which is why the
+		-- centre of the minimap was the centre of the map rather than the player, most
+		-- obviously on the small subzone maps.
+		--
+		-- This is the same override the original add-on installs; the maths is its
+		-- FocusZoomAndOffset, which is what actually puts a given point in the middle.
+		local function IsNormalizedPointInsideMapBounds(x, y)
+			return x > 0 and x < 1 and y > 0 and y < 1
+		end
+
+		local function FocusZoomAndOffset(panZoom, normalizedX, normalizedY)
+			if not (normalizedX and normalizedY and IsNormalizedPointInsideMapBounds(normalizedX, normalizedY)) then
+				return nil
+			end
+
+			local targetNormalizedZoom = 1
+			local curvedTargetZoom = panZoom:ComputeCurvedZoom(targetNormalizedZoom)
+
+			local zoomedNX, zoomedNY = normalizedX * curvedTargetZoom, normalizedY * curvedTargetZoom
+			local borderSizeN = (curvedTargetZoom - 1) * 0.5
+			local offsetNX, offsetNY = 0.5 + borderSizeN - zoomedNX, 0.5 + borderSizeN - zoomedNY
+
+			-- Clamping is what stops the view sliding off the edge of the map. It also means a
+			-- player standing near an edge is not exactly centred, which is correct and is how
+			-- the original behaves too.
+			if not panZoom.allowPanPastMapEdge then
+				offsetNX, offsetNY = zo_clamp(offsetNX, -borderSizeN, borderSizeN), zo_clamp(offsetNY, -borderSizeN, borderSizeN)
+			end
+
+			local units = zo_max(ZO_WorldMapScroll:GetDimensions())
+			return targetNormalizedZoom, offsetNX * units, offsetNY * units
+		end
+
+		local panZoomClass = getmetatable(ZO_WorldMap_GetPanAndZoom()).__index
+		local orgFocusZoomAndOffset
+		orgFocusZoomAndOffset =
+			HookHotPath(
+			panZoomClass,
+			"GetNormalizedPositionFocusZoomAndOffset",
+			function(panZoom, normalizedX, normalizedY, useCurrentZoom)
+				if LiteMinimapActive() then
+					local zoom, offsetX, offsetY = FocusZoomAndOffset(panZoom, normalizedX, normalizedY)
+					if zoom then
+						return zoom, offsetX, offsetY
+					end
+				end
+				return orgFocusZoomAndOffset(panZoom, normalizedX, normalizedY, useCurrentZoom)
+			end
+		)
 	end
 
 	function addon:StartLiteFollowWatch()

@@ -2502,7 +2502,21 @@ function addon:Initialize()
 		if panZoom.GetNormalizedPositionFocusZoomAndOffset and panZoom.SetCurrentOffset then
 			local _, offsetX, offsetY = panZoom:GetNormalizedPositionFocusZoomAndOffset(normalizedX, normalizedY)
 			if offsetX and offsetY then
+				-- Setting only the current offset was not enough: the machinery eases the
+				-- current value towards a target every Update, so an in-flight target simply
+				-- pulled the view straight back and the map never followed. Cancel any pending
+				-- animation first, and set the target as well where the build exposes one.
+				panZoom.targetOffsetX, panZoom.targetOffsetY = nil, nil
+				panZoom.pendingPanToPinZoomMode = nil
+				if panZoom.ClearJumpToPinWhenAvailable then
+					panZoom:ClearJumpToPinWhenAvailable()
+				end
+
 				panZoom:SetCurrentOffset(offsetX, offsetY)
+				if panZoom.SetTargetOffset then
+					panZoom:SetTargetOffset(offsetX, offsetY)
+				end
+
 				if centreRoute ~= "SetCurrentOffset" then
 					centreRoute = "SetCurrentOffset"
 					self:ReportCentreRoute(centreRoute)
@@ -2537,6 +2551,53 @@ function addon:Initialize()
 				self:ReportCentreRoute(centreRoute)
 			end
 		end
+	end
+
+	-- What ZO_MapPanAndZoom actually offers, printed in short chunks so a long list is not
+	-- lost to line limits or scrolled past. Called on startup with debug on, and again the
+	-- moment debug is switched on, so it can be read without a reload.
+	function addon:DumpPanZoomApi()
+		local panZoom = self.panZoom
+		if not panZoom then
+			return
+		end
+
+		local function emitList(label, items)
+			table.sort(items)
+			local line = ""
+			for index = 1, #items do
+				local piece = items[index]
+				if #line + #piece + 2 > 180 then
+					df("[PBsMiniMap] %s: %s", label, line)
+					line = piece
+				else
+					line = (#line > 0) and (line .. ", " .. piece) or piece
+				end
+			end
+			if #line > 0 then
+				df("[PBsMiniMap] %s: %s", label, line)
+			end
+		end
+
+		local meta = getmetatable(panZoom)
+		local index = meta and meta.__index
+		if type(index) == "table" then
+			local names = {}
+			for key, value in pairs(index) do
+				if type(value) == "function" then
+					names[#names + 1] = tostring(key)
+				end
+			end
+			emitList("panZoom methods", names)
+		end
+
+		local fields = {}
+		for key, value in pairs(panZoom) do
+			if type(value) ~= "function" and type(value) ~= "table" then
+				fields[#fields + 1] = string.format("%s=%s", tostring(key), tostring(value))
+			end
+		end
+		emitList("panZoom fields", fields)
 	end
 
 	function addon:ReportCentreRoute(route)
@@ -2846,6 +2907,9 @@ function addon:Initialize()
 		self:InitLiteHooks()
 		self:StartLiteMinimapLayoutWatch()
 		self:StartLiteFollowWatch()
+		if self.account.debug then
+			self:DumpPanZoomApi()
+		end
 	end
 
 	if self.account.debug then
@@ -3104,35 +3168,6 @@ local function InitMemoryWatchdog()
 			Emit("map changed: " .. tostring(GetMapName()))
 		end
 	)
-
-	-- One-shot dump of what ZO_MapPanAndZoom actually offers. Every zoom/pan problem so far has
-	-- come from guessing at this API from the outside; with the real list in hand the next fix
-	-- can be chosen rather than tried.
-	if account.debug then
-		local panZoom = addon.panZoom
-		local meta = panZoom and getmetatable(panZoom)
-		local index = meta and meta.__index
-		if type(index) == "table" then
-			local names = {}
-			for key, value in pairs(index) do
-				if type(value) == "function" then
-					names[#names + 1] = tostring(key)
-				end
-			end
-			table.sort(names)
-			DebugOut("[PBsMiniMap] panZoom methods: %s", table.concat(names, ", "))
-		end
-		if panZoom then
-			local fields = {}
-			for key, value in pairs(panZoom) do
-				if type(value) ~= "function" and type(value) ~= "table" then
-					fields[#fields + 1] = string.format("%s=%s", tostring(key), tostring(value))
-				end
-			end
-			table.sort(fields)
-			DebugOut("[PBsMiniMap] panZoom fields: %s", table.concat(fields, ", "))
-		end
-	end
 
 	Emit("startup")
 end

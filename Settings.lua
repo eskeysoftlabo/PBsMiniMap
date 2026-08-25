@@ -201,6 +201,10 @@ function addon:InitSettings()
 			end,
 			setFunction = function(value)
 				self.account.debug = value
+				-- Print the pan/zoom API right away, so it can be read without a reload.
+				if value and self.DumpPanZoomApi then
+					self:DumpPanZoomApi()
+				end
 			end
 		}
 	)

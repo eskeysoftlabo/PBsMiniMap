@@ -2058,9 +2058,9 @@ function addon:Initialize()
 		-- settings (and the same defaults). Renamed from the old liteZoom* keys because those
 		-- held 0..1 values with a completely different meaning.
 		liteScale = 1.3,
-		liteScaleSubZone = 1.0,
-		liteScaleDungeon = 0.7,
-		liteScaleBattleground = 0.7,
+		liteScaleSubZone = 0.35,
+		liteScaleDungeon = 0.5,
+		liteScaleBattleground = 0.5,
 		zoom = 1.3,
 		mountedZoom = 1,
 		subZoneZoom = 1,
@@ -2390,10 +2390,34 @@ function addon:Initialize()
 	-- Everything here is gated on "not dormant", so none of it runs while the standard World
 	-- Map is in front -- the full Tamriel view stays untouched.
 	local lastPlayerX, lastPlayerY = -1, -1
+	local lastMapTile
+	local forceMapResync = false
 	function addon:ResetFollowState()
 		lastPlayerX, lastPlayerY = -1, -1
+		lastMapTile = nil
 		if self.ResetLiteZoomState then
 			self:ResetLiteZoomState()
+		end
+	end
+
+	-- Crossing between a city and the open world does not always leave
+	-- DoesCurrentMapMatchMapForPlayerLocation() reporting a mismatch, so on its own that check
+	-- let the minimap sit on the area just left. The zone events force a resync on the next
+	-- tick, and the tile texture is watched as a second signal for map changes that arrive
+	-- without an event.
+	function addon:RequestMapResync()
+		forceMapResync = true
+	end
+
+	function addon:StartLiteZoneWatch()
+		local function resync()
+			self:RequestMapResync()
+		end
+		em:RegisterForEvent(self.name .. "LiteZone", EVENT_ZONE_CHANGED, resync)
+		em:RegisterForEvent(self.name .. "LiteActivated", EVENT_PLAYER_ACTIVATED, resync)
+		-- Not present on every API version, so only wire it up when it exists.
+		if EVENT_LINKED_WORLD_POSITION_CHANGED then
+			em:RegisterForEvent(self.name .. "LiteLinked", EVENT_LINKED_WORLD_POSITION_CHANGED, resync)
 		end
 	end
 
@@ -2671,9 +2695,22 @@ function addon:Initialize()
 		-- 1. Stay on the player's own map; walking into a new zone otherwise leaves the
 		-- minimap showing the old one.
 		local disturbed = false
-		if not DoesCurrentMapMatchMapForPlayerLocation() then
-			SetMapToPlayerLocation()
+
+		local mapTile = GetMapTileTexture()
+		if mapTile ~= lastMapTile then
+			-- The map changed underneath us: the zoom range was computed for the old one.
+			lastMapTile = mapTile
 			lastPlayerX, lastPlayerY = -1, -1
+			self:ResetLiteZoomState()
+			disturbed = true
+		end
+
+		if forceMapResync or not DoesCurrentMapMatchMapForPlayerLocation() then
+			forceMapResync = false
+			SetMapToPlayerLocation()
+			lastMapTile = GetMapTileTexture()
+			lastPlayerX, lastPlayerY = -1, -1
+			self:ResetLiteZoomState()
 			disturbed = true
 		end
 
@@ -2935,6 +2972,7 @@ function addon:Initialize()
 		self:InitLiteHooks()
 		self:StartLiteMinimapLayoutWatch()
 		self:StartLiteFollowWatch()
+		self:StartLiteZoneWatch()
 		if self.account.debug then
 			self:DumpPanZoomApi()
 		end

@@ -156,7 +156,7 @@ function addon:InitSettings()
 		{
 			type = LibHarvensAddonSettings.ST_SLIDER,
 			label = "Debug: init level",
-			tooltip = "0=off  1=settings  2=+resize hook  3=+all hooks (no visible minimap)  4=+visible minimap (normal). Lower this to find which layer causes the crash. Press Apply after changing.",
+			tooltip = "Diagnostic, locked. 2 is the working configuration; 3+ reproduces the console memory crash. Kept visible as a record of how that was isolated.",
 			min = 0,
 			max = 4,
 			step = 1,
@@ -168,14 +168,15 @@ function addon:InitSettings()
 			end,
 			setFunction = function(value)
 				self.account.initLevel = value
-			end
+			end,
+			disable = true
 		}
 	)
 	settings:AddSetting(
 		{
 			type = LibHarvensAddonSettings.ST_SLIDER,
 			label = "Debug: minimap part",
-			tooltip = "Only used at init level 3+. 0=hooks only  1=+fragment tweaks  2=+texture hook  3=+own map mode (normal). Press Apply after changing.",
+			tooltip = "Diagnostic, locked. Only meaningful at init level 3+, which is not the shipping configuration.",
 			min = 0,
 			max = 3,
 			step = 1,
@@ -187,14 +188,15 @@ function addon:InitSettings()
 			end,
 			setFunction = function(value)
 				self.account.miniPart = value
-			end
+			end,
+			disable = true
 		}
 	)
 	settings:AddSetting(
 		{
 			type = LibHarvensAddonSettings.ST_CHECKBOX,
 			label = "Debug: log to chat",
-			tooltip = "Print the add-on memory and map-state trail to chat. Off by default; the trail is recorded either way and shown on the next login when this is on.",
+			tooltip = "Diagnostic, locked. The trail is still recorded to saved variables either way.",
 			default = self.accountDefaults.debug,
 			getFunction = function()
 				return self.account.debug
@@ -205,7 +207,8 @@ function addon:InitSettings()
 				if value and self.DumpPanZoomApi then
 					self:DumpPanZoomApi()
 				end
-			end
+			end,
+			disable = true
 		}
 	)
 	settings:AddSetting(

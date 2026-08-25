@@ -30,7 +30,12 @@ local addon = {
 --   addon.baseTitle  "PB's MiniMap"        -> sub-panel headings
 --   addon.version    "1.0.3"               -> version field in the settings panel
 --   addon.title      "PB's MiniMap 1.0.3"  -> settings panel heading
-local DISPLAY_NAME = "PB's MiniMap"
+-- Typographic apostrophe (U+2019), not ASCII '.
+--
+-- With the ASCII one the settings panel rendered the name as "MINIMAP 1.4.2": the "PB's "
+-- prefix was being eaten somewhere in the settings library's string handling. U+2019 is not
+-- a quoting character to any of that, and it is what was asked for in the first place.
+local DISPLAY_NAME = "PB’s MiniMap"
 local AUTHOR = "PinkBanther"
 
 local function ReadManifestVersion()

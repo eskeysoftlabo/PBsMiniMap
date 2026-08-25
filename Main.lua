@@ -307,28 +307,6 @@ function addon:HideMapAreaLabels()
 	)
 end
 
--- Diagnostic: report what is currently drawing text on the map, so a label that keeps
--- surviving can be identified by name instead of guessed at.
-function addon:DumpMapAreaLabels()
-	if not ZO_WorldMap then
-		df("[PBsMiniMap] no map window")
-		return
-	end
-	local found = 0
-	ForEachLabel(
-		ZO_WorldMap,
-		0,
-		function(label)
-			local text = label.GetText and label:GetText()
-			if text and text ~= "" then
-				found = found + 1
-				df("[PBsMiniMap] label %s hidden=%s text=%s", tostring(label:GetName()), tostring(label:IsHidden()), tostring(text))
-			end
-		end
-	)
-	df("[PBsMiniMap] %d label(s) with text under ZO_WorldMap", found)
-end
-
 function addon:RefreshMapLocationLabels()
 	local manager = self.locationPinManager
 	if manager and manager.RefreshLocations then

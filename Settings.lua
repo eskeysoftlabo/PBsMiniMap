@@ -548,19 +548,6 @@ function addon:InitSettings()
 				clickHandler = applyLayout
 			}
 		)
-		-- Left operable on purpose, unlike the locked Debug entries: it is the way to identify
-		-- a place name that still shows through.
-		settings:AddSetting(
-			{
-				type = LibHarvensAddonSettings.ST_BUTTON,
-				label = "",
-				tooltip = GetString(SI_PBSMINIMAP_LITE_DUMP_LABELS_TOOLTIP),
-				buttonText = GetString(SI_PBSMINIMAP_LITE_DUMP_LABELS),
-				clickHandler = function()
-					self:DumpMapAreaLabels()
-				end
-			}
-		)
 	end
 
 	-- The settings below drive functions that only exist once InitMiniMap has run, so they

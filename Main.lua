@@ -2282,6 +2282,17 @@ function addon:Initialize()
 		return true
 	end
 
+	-- Exposed so the follow tick can ask "has it drifted?" without going through the
+	-- maintenance tick's backoff bookkeeping. Defined after LiteLayoutMatches so it captures
+	-- the local rather than a nil global.
+	function addon:IsLiteLayoutCurrent()
+		local account = self.account
+		if not account or not ZO_WorldMap or ZO_WorldMap:IsHidden() then
+			return true
+		end
+		return LiteLayoutMatches(account)
+	end
+
 	function addon:MaintainLiteMinimapLayout()
 		if self.dormant then
 			-- Standard World Map is in front: leave it at full size.
@@ -2327,51 +2338,55 @@ function addon:Initialize()
 			return
 		end
 
-		-- Anything below that changes the map, the zoom or the pan offset makes the game
-		-- re-assert its own frame layout, which is what was blowing the minimap back up to
-		-- full map size. Track it and put our layout back in the same frame.
-		local touchedMap = false
+		-- Order matters, and getting it wrong is what caused the centred/not-centred flicker:
+		-- re-asserting the layout runs the map through a resize, which resets the pan offset.
+		-- Doing that after centring meant every frame ended off-centre, and the next frame
+		-- re-centred it, at frame rate. So centring has to be the LAST thing in the frame.
+		--
+		--   1. put the map on the player's own map
+		--   2. hold the zoom
+		--   3. restore our size and position   (may reset the pan)
+		--   4. centre on the player            (always last)
 
-		-- Stay on the player's own map; walking into a new zone otherwise leaves the minimap
-		-- showing the old one.
+		-- 1. Stay on the player's own map; walking into a new zone otherwise leaves the
+		-- minimap showing the old one.
+		local disturbed = false
 		if not DoesCurrentMapMatchMapForPlayerLocation() then
 			SetMapToPlayerLocation()
 			lastPlayerX, lastPlayerY = -1, -1
-			touchedMap = true
+			disturbed = true
 		end
 
-		-- Hold the requested zoom. Re-asserted rather than set once, because the game resets
-		-- it on map changes.
+		-- 2. Hold the requested zoom. Re-asserted rather than set once, because the game
+		-- resets it on map changes.
 		local panZoom = self.panZoom
 		if panZoom and account.liteZoom then
 			local current = panZoom:GetCurrentNormalizedZoom()
 			if not current or zo_abs(current - account.liteZoom) > 0.005 then
 				panZoom:SetCurrentNormalizedZoom(account.liteZoom)
-				touchedMap = true
+				disturbed = true
 			end
 		end
 
-		-- Only re-centre when the player actually moved, so standing still costs nothing.
+		-- 3. Restore our size and position. Only touches anything when it has actually
+		-- drifted, but when it does it also resets the pan, so remember to re-centre.
+		self:ResetLiteLayoutBackoff()
+		if not self:IsLiteLayoutCurrent() then
+			self:ApplyLiteMinimapLayout()
+			disturbed = true
+		end
+
+		-- 4. Centre on the player. Done whenever they moved, and also whenever anything above
+		-- disturbed the map, since that is exactly when the pan offset was thrown away.
 		local x, y = GetMapPlayerPosition("player")
 		local moved = x and (zo_abs(x - lastPlayerX) >= 0.00005 or zo_abs(y - lastPlayerY) >= 0.00005)
-		if moved then
-			lastPlayerX, lastPlayerY = x, y
+		if (moved or disturbed) and ZO_WorldMap_JumpToPlayer then
+			if x then
+				lastPlayerX, lastPlayerY = x, y
+			end
 			-- Jump rather than pan: panning eases towards the player and always lags behind,
 			-- which is not "always centred".
-			if ZO_WorldMap_JumpToPlayer then
-				ZO_WorldMap_JumpToPlayer()
-				touchedMap = true
-			end
-		end
-
-		if touchedMap then
-			-- Waiting for the 200ms maintenance tick was not enough: while moving, the layout
-			-- was knocked out again before that tick ever saw it settled, so every attempt
-			-- looked like a failure and the backoff gave up for good. Clear it and re-assert
-			-- immediately. MaintainLiteMinimapLayout compares first, so a frame where nothing
-			-- actually drifted costs only the comparison.
-			self:ResetLiteLayoutBackoff()
-			self:MaintainLiteMinimapLayout()
+			ZO_WorldMap_JumpToPlayer()
 		end
 	end
 

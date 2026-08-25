@@ -401,10 +401,10 @@ function addon:InitSettings()
 			{
 				type = LibHarvensAddonSettings.ST_SLIDER,
 				label = "Zoom",
-				tooltip = "How far the minimap is zoomed in. Centring only shows once this is high enough that the map is larger than the window - at 0 the whole zone fits and there is nothing to pan.",
+				tooltip = "How far the minimap is zoomed in. Centring only shows once this is high enough that the map is larger than the window - at 0 the whole zone fits and there is nothing to pan. Applies immediately.",
 				min = 0,
 				max = 1,
-				step = 0.05,
+				step = 0.01,
 				default = self.accountDefaults.liteZoom,
 				format = "%.2f",
 				unit = "",

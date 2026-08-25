@@ -2325,8 +2325,10 @@ function addon:Initialize()
 	-- Everything here is gated on "not dormant", so none of it runs while the standard World
 	-- Map is in front -- the full Tamriel view stays untouched.
 	local lastPlayerX, lastPlayerY = -1, -1
+	local lastZoomRequest, zoomAttempts = nil, 0
 	function addon:ResetFollowState()
 		lastPlayerX, lastPlayerY = -1, -1
+		lastZoomRequest, zoomAttempts = nil, 0
 	end
 
 	-- Which zoom setting applies right now.
@@ -2388,8 +2390,20 @@ function addon:Initialize()
 		if panZoom and wantZoom then
 			local current = panZoom:GetCurrentNormalizedZoom()
 			if not current or zo_abs(current - wantZoom) > 0.005 then
-				panZoom:SetCurrentNormalizedZoom(wantZoom)
-				disturbed = true
+				if wantZoom ~= lastZoomRequest then
+					-- A new target: always worth trying, and it resets the give-up counter.
+					lastZoomRequest, zoomAttempts = wantZoom, 0
+				end
+				-- Safety valve. If the game will not accept the zoom, asking again every frame
+				-- is a tug of war that never lets the map finish an update -- which is what
+				-- stopped the player pin from ever appearing. Try a few times, then leave it.
+				if zoomAttempts < 10 then
+					zoomAttempts = zoomAttempts + 1
+					panZoom:SetCurrentNormalizedZoom(wantZoom)
+					disturbed = true
+				end
+			else
+				zoomAttempts = 0
 			end
 		end
 
@@ -2413,6 +2427,50 @@ function addon:Initialize()
 			-- which is not "always centred".
 			ZO_WorldMap_JumpToPlayer()
 		end
+	end
+
+	-- Hooks the lite path needs. InitMiniMap is skipped at this level, so without these the
+	-- game owns behaviour we have to take over:
+	--
+	--  * RefreshMapFrameAnchor re-anchors and re-sizes ZO_WorldMap whenever the map updates.
+	--    Following the player updates the map constantly, so the window was being reset to the
+	--    standard map size several times a second.
+	--  * CanMapZoom decides whether a zoom change is allowed at all. On the HUD the game says
+	--    no, so every frame we asked for a zoom, were refused, and asked again -- a permanent
+	--    tug of war that never let the map finish an update, which is why the player pin never
+	--    appeared.
+	--
+	-- Both are registered as hot-path hooks, so dormancy swaps them back to the game's own
+	-- versions while the standard World Map is in front. Nothing of ours is installed during
+	-- the full Tamriel view.
+	local function LiteMinimapActive()
+		return (addon.initLevel or 0) < 3 and not addon.dormant and addon.account and addon.account.enableMap
+	end
+
+	function addon:InitLiteHooks()
+		local orgRefreshMapFrameAnchor
+		orgRefreshMapFrameAnchor =
+			HookHotPath(
+			ZO_WorldMapManager,
+			"RefreshMapFrameAnchor",
+			function(manager, ...)
+				if LiteMinimapActive() then
+					-- We own the window while the minimap is up.
+					return
+				end
+				return orgRefreshMapFrameAnchor(manager, ...)
+			end
+		)
+
+		local orgCanMapZoom
+		orgCanMapZoom =
+			HookHotPath(
+			self.panZoom,
+			"CanMapZoom",
+			function(...)
+				return orgCanMapZoom(...) or LiteMinimapActive() or false
+			end
+		)
 	end
 
 	function addon:StartLiteFollowWatch()
@@ -2527,6 +2585,7 @@ function addon:Initialize()
 		self:SetMinimapAttached(true)
 	end
 	if initLevel < 3 and self.account.enableMap then
+		self:InitLiteHooks()
 		self:StartLiteMinimapLayoutWatch()
 		self:StartLiteFollowWatch()
 	end

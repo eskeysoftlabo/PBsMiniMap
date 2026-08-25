@@ -382,6 +382,45 @@ function addon:InitSettings()
 		)
 		settings:AddSetting(
 			{
+				type = LibHarvensAddonSettings.ST_CHECKBOX,
+				label = "Follow player",
+				tooltip = "Keep the player centred on the minimap and move the map as you travel.",
+				default = self.accountDefaults.followPlayer,
+				getFunction = function()
+					return self.account.followPlayer
+				end,
+				setFunction = function(value)
+					self.account.followPlayer = value
+					if self.ResetFollowState then
+						self:ResetFollowState()
+					end
+				end
+			}
+		)
+		settings:AddSetting(
+			{
+				type = LibHarvensAddonSettings.ST_SLIDER,
+				label = "Zoom",
+				tooltip = "How far the minimap is zoomed in. Centring only shows once this is high enough that the map is larger than the window - at 0 the whole zone fits and there is nothing to pan.",
+				min = 0,
+				max = 1,
+				step = 0.05,
+				default = self.accountDefaults.liteZoom,
+				format = "%.2f",
+				unit = "",
+				getFunction = function()
+					return self.account.liteZoom or 0.5
+				end,
+				setFunction = function(value)
+					self.account.liteZoom = value
+					if self.ResetFollowState then
+						self:ResetFollowState()
+					end
+				end
+			}
+		)
+		settings:AddSetting(
+			{
 				type = LibHarvensAddonSettings.ST_BUTTON,
 				label = "",
 				tooltip = "Re-apply the size and position now.",

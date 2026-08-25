@@ -2031,6 +2031,8 @@ function addon:Initialize()
 		enableMap = true,
 		initLevel = 2,
 		miniPart = 3,
+		followPlayer = true,
+		liteZoom = 0.5,
 		zoom = 1.3,
 		mountedZoom = 1,
 		subZoneZoom = 1,
@@ -2300,6 +2302,72 @@ function addon:Initialize()
 		self:ApplyLiteMinimapLayout()
 	end
 
+	-- Keep the player centred on the lite minimap.
+	--
+	-- Two parts are needed, not one: centring only has an effect once the map is zoomed in
+	-- far enough that there is something to pan. Fully zoomed out the whole zone fits in the
+	-- window, the pan offset clamps, and the player sits wherever the zone puts them.
+	--
+	-- Everything here is gated on "not dormant", so none of it runs while the standard World
+	-- Map is in front -- the full Tamriel view stays untouched.
+	local lastPlayerX, lastPlayerY = -1, -1
+	function addon:ResetFollowState()
+		lastPlayerX, lastPlayerY = -1, -1
+	end
+
+	function addon:FollowPlayerTick()
+		if self.dormant then
+			return
+		end
+		local account = self.account
+		if not account or not account.followPlayer then
+			return
+		end
+		if not ZO_WorldMap or ZO_WorldMap:IsHidden() then
+			return
+		end
+
+		-- Stay on the player's own map; walking into a new zone otherwise leaves the minimap
+		-- showing the old one.
+		if not DoesCurrentMapMatchMapForPlayerLocation() then
+			SetMapToPlayerLocation()
+			lastPlayerX, lastPlayerY = -1, -1
+		end
+
+		-- Hold the requested zoom. Re-asserted rather than set once, because the game resets
+		-- it on map changes.
+		local panZoom = self.panZoom
+		if panZoom and account.liteZoom then
+			local current = panZoom:GetCurrentNormalizedZoom()
+			if not current or zo_abs(current - account.liteZoom) > 0.005 then
+				panZoom:SetCurrentNormalizedZoom(account.liteZoom)
+			end
+		end
+
+		-- Only re-centre when the player actually moved, so standing still costs nothing.
+		local x, y = GetMapPlayerPosition("player")
+		if not x or (zo_abs(x - lastPlayerX) < 0.00005 and zo_abs(y - lastPlayerY) < 0.00005) then
+			return
+		end
+		lastPlayerX, lastPlayerY = x, y
+
+		-- Jump rather than pan: panning eases towards the player and always lags behind, which
+		-- is not "always centred".
+		if ZO_WorldMap_JumpToPlayer then
+			ZO_WorldMap_JumpToPlayer()
+		end
+	end
+
+	function addon:StartLiteFollowWatch()
+		EVENT_MANAGER:RegisterForUpdate(
+			self.name .. "LiteFollow",
+			0,
+			function()
+				self:FollowPlayerTick()
+			end
+		)
+	end
+
 	function addon:StartLiteMinimapLayoutWatch()
 		EVENT_MANAGER:RegisterForUpdate(
 			self.name .. "LiteLayout",
@@ -2403,6 +2471,7 @@ function addon:Initialize()
 	end
 	if initLevel < 3 and self.account.enableMap then
 		self:StartLiteMinimapLayoutWatch()
+		self:StartLiteFollowWatch()
 	end
 
 	if self.account.debug then

@@ -158,6 +158,29 @@ function addon:ClearMapLocationLabels()
 	end
 end
 
+-- Place names attached to pins.
+--
+-- These are the Label child of each ZO_MapPin, not the ZO_MapLocationPins_Manager labels the
+-- first attempt went after -- which is why hiding those changed nothing. The game decides per
+-- pin and per zoom whether a label shows, so rather than trying to predict that, walk the live
+-- pins and hide what is showing.
+--
+-- Only ever hides. Unhiding selectively would mean guessing which labels the game wanted
+-- visible; instead the standard map gets a refresh, which rebuilds the pins with the game's
+-- own choices.
+function addon:HidePinLabels()
+	if not self.pinManager or not self.pinManager.GetActiveObjects then
+		return
+	end
+	for _, pin in pairs(self.pinManager:GetActiveObjects()) do
+		local control = pin.GetControl and pin:GetControl()
+		local label = control and control.GetNamedChild and control:GetNamedChild("Label")
+		if label and not label:IsHidden() then
+			label:SetHidden(true)
+		end
+	end
+end
+
 function addon:RefreshMapLocationLabels()
 	local manager = self.locationPinManager
 	if manager and manager.RefreshLocations then
@@ -233,6 +256,14 @@ function addon:SetDormant(value)
 		if self.ApplyLiteAlpha then
 			self:ApplyLiteAlpha()
 		end
+		-- Labels were hidden one by one; let the game rebuild the pins rather than trying to
+		-- work out which ones it wanted visible.
+		if (self.initLevel or 0) < 3 and self.account and self.account.hideMapLabels then
+			self:RefreshMapLocationLabels()
+			if ZO_WorldMap_UpdateMap then
+				ZO_WorldMap_UpdateMap()
+			end
+		end
 	else
 		if self.SetMinimapAttached and self.account and self.account.enableMap then
 			self:SetMinimapAttached(true)
@@ -258,6 +289,8 @@ function addon:SetDormant(value)
 		-- whatever was last focused there lingers too. Clear both on the way back.
 		if (self.initLevel or 0) < 3 and self.account and self.account.hideMapLabels then
 			self:ClearMapLocationLabels()
+			-- Immediately, rather than waiting up to a tick for the maintenance pass.
+			self:HidePinLabels()
 		end
 		if ZO_WorldMap_HandlePinExit then
 			ZO_WorldMap_HandlePinExit()
@@ -3027,6 +3060,9 @@ function addon:Initialize()
 			function()
 				self:MaintainLiteMinimapLayout()
 				self:ApplyLiteAlpha()
+				if not self.dormant and self.account and self.account.hideMapLabels then
+					self:HidePinLabels()
+				end
 			end
 		)
 	end

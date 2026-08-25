@@ -428,8 +428,12 @@ function addon:InitSettings()
 					-- the game to rebuild the labels when switching it off.
 					if value then
 						self:ClearMapLocationLabels()
+						self:HidePinLabels()
 					else
 						self:RefreshMapLocationLabels()
+						if ZO_WorldMap_UpdateMap then
+							ZO_WorldMap_UpdateMap()
+						end
 					end
 				end
 			}

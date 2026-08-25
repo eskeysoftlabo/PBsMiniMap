@@ -427,14 +427,9 @@ function addon:InitSettings()
 					-- Take effect now: clear what is on screen when switching it on, and ask
 					-- the game to rebuild the labels when switching it off.
 					if value then
-						if ZO_MapLocationPins_Manager and ZO_MapLocationPins_Manager.ReleaseAllObjects then
-							ZO_MapLocationPins_Manager:ReleaseAllObjects()
-						end
-						if self.pinManager then
-							self.pinManager:RemovePins("loc")
-						end
-					elseif ZO_MapLocationPins_Manager and ZO_MapLocationPins_Manager.RefreshLocations then
-						ZO_MapLocationPins_Manager:RefreshLocations()
+						self:ClearMapLocationLabels()
+					else
+						self:RefreshMapLocationLabels()
 					end
 				end
 			}

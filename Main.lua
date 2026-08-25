@@ -143,6 +143,28 @@ local function HookHotPath(container, key, addonImpl)
 end
 -- The API list shows a proper setter for this; assigning the field directly was a guess at
 -- its name and had no effect, which is part of why the view still clamped to the map edge.
+-- Clearing the place-name labels.
+--
+-- ZO_MapLocationPins_Manager is the class table, not the live pool: calling ReleaseAllObjects
+-- on it walks a nil object list and throws. The instance is only reachable as the self handed
+-- to RefreshLocations, so the hook stores it and everything else goes through here.
+function addon:ClearMapLocationLabels()
+	local manager = self.locationPinManager
+	if manager and manager.ReleaseAllObjects then
+		manager:ReleaseAllObjects()
+	end
+	if self.pinManager then
+		self.pinManager:RemovePins("loc")
+	end
+end
+
+function addon:RefreshMapLocationLabels()
+	local manager = self.locationPinManager
+	if manager and manager.RefreshLocations then
+		manager:RefreshLocations()
+	end
+end
+
 function addon:SetAllowPanPastMapEdge(allow)
 	local panZoom = self.panZoom
 	if not panZoom then
@@ -235,12 +257,7 @@ function addon:SetDormant(value)
 		-- Labels built while the full map was open are still on the map, and the name of
 		-- whatever was last focused there lingers too. Clear both on the way back.
 		if (self.initLevel or 0) < 3 and self.account and self.account.hideMapLabels then
-			if ZO_MapLocationPins_Manager and ZO_MapLocationPins_Manager.ReleaseAllObjects then
-				ZO_MapLocationPins_Manager:ReleaseAllObjects()
-			end
-			if self.pinManager then
-				self.pinManager:RemovePins("loc")
-			end
+			self:ClearMapLocationLabels()
 		end
 		if ZO_WorldMap_HandlePinExit then
 			ZO_WorldMap_HandlePinExit()
@@ -2904,6 +2921,8 @@ function addon:Initialize()
 				ZO_MapLocationPins_Manager,
 				"RefreshLocations",
 				function(manager, ...)
+					-- The only place the live pool is reachable from.
+					addon.locationPinManager = manager
 					if LiteMinimapActive() and addon.account and addon.account.hideMapLabels then
 						if manager.ReleaseAllObjects then
 							manager:ReleaseAllObjects()

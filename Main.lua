@@ -136,6 +136,20 @@ local function HookHotPath(container, key, addonImpl)
 	container[key] = addonImpl
 	return vanilla
 end
+-- The API list shows a proper setter for this; assigning the field directly was a guess at
+-- its name and had no effect, which is part of why the view still clamped to the map edge.
+function addon:SetAllowPanPastMapEdge(allow)
+	local panZoom = self.panZoom
+	if not panZoom then
+		return
+	end
+	if panZoom.SetAllowPanPastMapEdge then
+		panZoom:SetAllowPanPastMapEdge(allow)
+	else
+		panZoom.allowPanPastMapEdge = allow
+	end
+end
+
 function addon:SetHotPathHooksActive(active)
 	for i = 1, #hotPathHooks do
 		local hook = hotPathHooks[i]
@@ -186,8 +200,8 @@ function addon:SetDormant(value)
 		if (self.initLevel or 0) < 3 and self.RestoreDefaultMapLayout then
 			self:RestoreDefaultMapLayout()
 		end
-		if self.panZoom and self.orgAllowPanPastMapEdge ~= nil then
-			self.panZoom.allowPanPastMapEdge = self.orgAllowPanPastMapEdge
+		if self.orgAllowPanPastMapEdge ~= nil then
+			self:SetAllowPanPastMapEdge(self.orgAllowPanPastMapEdge)
 		end
 	else
 		if self.SetMinimapAttached and self.account and self.account.enableMap then
@@ -204,8 +218,8 @@ function addon:SetDormant(value)
 		end
 		-- Minimap is up again: let the view sit past the map edge so the player marker can stay
 		-- in the middle even at the border of a small map.
-		if (self.initLevel or 0) < 3 and self.panZoom and self.orgAllowPanPastMapEdge ~= nil then
-			self.panZoom.allowPanPastMapEdge = true
+		if (self.initLevel or 0) < 3 and self.orgAllowPanPastMapEdge ~= nil then
+			self:SetAllowPanPastMapEdge(true)
 		end
 		-- ShowClock only exists once InitMiniMap has run (see initLevel).
 		if self.ShowClock and self.account and self.account.showClock then
@@ -2489,76 +2503,63 @@ function addon:Initialize()
 	-- Rather than guess at one replacement, try the routes in order of directness and remember
 	-- which one worked. The chosen route is reported once in the debug log, so if this still
 	-- misbehaves the answer is in the log rather than in another round of guessing.
+	-- Putting the player in the middle, written against the API this build actually has
+	-- (dumped via DumpPanZoomApi).
+	--
+	-- The earlier attempts failed for two separate reasons. SetCurrentOffset on its own is
+	-- undone by the next Update, which eases the current offset back towards the pending
+	-- target -- and the "clear the target" code was assigning made-up field names instead of
+	-- calling ClearTargetOffset. Meanwhile PanToNormalizedPosition, the call actually built
+	-- for this, was never reached because the SetCurrentOffset branch matched first.
 	local centreRoute
 	function addon:CentreOnPlayer(normalizedX, normalizedY)
 		self.centreCalls = (self.centreCalls or 0) + 1
+
 		local panZoom = self.panZoom
 		if not panZoom then
 			return
 		end
 
-		-- 1. Ask the pan machinery for the offsets our own focus override computes, and set
-		-- them directly. This is the most direct route and bypasses map-state gating.
+		local function route(name)
+			if centreRoute ~= name then
+				centreRoute = name
+				self:ReportCentreRoute(name)
+			end
+		end
+
+		-- 1. The purpose-built call. It routes through GetNormalizedPositionFocusZoomAndOffset,
+		-- which we override, so it lands on our centred offsets and follows the game's own
+		-- sequencing rather than fighting it.
+		if panZoom.PanToNormalizedPosition then
+			panZoom:PanToNormalizedPosition(normalizedX, normalizedY)
+			route("PanToNormalizedPosition")
+			return
+		end
+
+		-- 2. Drive the offsets directly, cancelling any pan already in flight first -- this
+		-- time through the real ClearTargetOffset/SetFinalTargetOffset entry points.
 		if panZoom.GetNormalizedPositionFocusZoomAndOffset and panZoom.SetCurrentOffset then
 			local _, offsetX, offsetY = panZoom:GetNormalizedPositionFocusZoomAndOffset(normalizedX, normalizedY)
 			if offsetX and offsetY then
-				-- Setting only the current offset was not enough: the machinery eases the
-				-- current value towards a target every Update, so an in-flight target simply
-				-- pulled the view straight back and the map never followed. Cancel any pending
-				-- animation first, and set the target as well where the build exposes one.
-				panZoom.targetOffsetX, panZoom.targetOffsetY = nil, nil
-				panZoom.pendingPanToPinZoomMode = nil
+				if panZoom.ClearTargetOffset then
+					panZoom:ClearTargetOffset()
+				end
 				if panZoom.ClearJumpToPinWhenAvailable then
 					panZoom:ClearJumpToPinWhenAvailable()
 				end
-
 				panZoom:SetCurrentOffset(offsetX, offsetY)
-				if panZoom.SetTargetOffset then
-					panZoom:SetTargetOffset(offsetX, offsetY)
+				if panZoom.SetFinalTargetOffset then
+					panZoom:SetFinalTargetOffset(offsetX, offsetY)
 				end
-
-				-- Setting the offset only stores it; something has to push it into the map
-				-- controls. The game does that as part of its own map update, which we
-				-- otherwise never trigger on the HUD.
-				if panZoom.UpdateMapPositionFromOffsets then
-					panZoom:UpdateMapPositionFromOffsets()
-				elseif ZO_WorldMap_UpdateMap then
-					ZO_WorldMap_UpdateMap()
-				end
-
-				if centreRoute ~= "SetCurrentOffset" then
-					centreRoute = "SetCurrentOffset"
-					self:ReportCentreRoute(centreRoute)
-				end
+				route("SetCurrentOffset")
 				return
 			end
-		end
-
-		-- 2. Purpose-built jump, if this build has one.
-		if panZoom.JumpToNormalizedPosition then
-			panZoom:JumpToNormalizedPosition(normalizedX, normalizedY)
-			if centreRoute ~= "JumpToNormalizedPosition" then
-				centreRoute = "JumpToNormalizedPosition"
-				self:ReportCentreRoute(centreRoute)
-			end
-			return
-		end
-		if panZoom.PanToNormalizedPosition then
-			panZoom:PanToNormalizedPosition(normalizedX, normalizedY)
-			if centreRoute ~= "PanToNormalizedPosition" then
-				centreRoute = "PanToNormalizedPosition"
-				self:ReportCentreRoute(centreRoute)
-			end
-			return
 		end
 
 		-- 3. The global helper, which is where this started.
 		if ZO_WorldMap_JumpToPlayer then
 			ZO_WorldMap_JumpToPlayer()
-			if centreRoute ~= "ZO_WorldMap_JumpToPlayer" then
-				centreRoute = "ZO_WorldMap_JumpToPlayer"
-				self:ReportCentreRoute(centreRoute)
-			end
+			route("ZO_WorldMap_JumpToPlayer")
 		end
 	end
 
@@ -2728,7 +2729,7 @@ function addon:Initialize()
 			self.orgAllowPanPastMapEdge = self.panZoom.allowPanPastMapEdge or false
 			-- Apply it now as well: dormancy only toggles it on a transition, and at startup
 			-- there has not been one.
-			self.panZoom.allowPanPastMapEdge = true
+			self:SetAllowPanPastMapEdge(true)
 		end
 
 		local orgRefreshMapFrameAnchor

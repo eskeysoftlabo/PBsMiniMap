@@ -132,6 +132,8 @@ local strings = {
 	SI_PBSMINIMAP_LITE_PREVIEW_TOOLTIP = "サイズと表示位置を調整する間、ここに地図を表示します。",
 	SI_PBSMINIMAP_SHOW_ON_TOP = "最前面に表示",
 	SI_PBSMINIMAP_SHOW_ON_TOP_TOOLTIP = "ミニマップを他のUI要素より前面に表示します。",
+	SI_PBSMINIMAP_LITE_DUMP_LABELS = "地名ラベルを調査",
+	SI_PBSMINIMAP_LITE_DUMP_LABELS_TOOLTIP = "現在マップ上で文字を表示しているラベルを、コントロール名つきでチャットに出力します。地名がまだ消えない場合のみ使用してください。",
 }
 
 for stringId, stringValue in pairs(strings) do

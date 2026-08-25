@@ -181,6 +181,71 @@ function addon:HidePinLabels()
 	end
 end
 
+-- Walk the map area and hide every label that is actually rendering text.
+--
+-- Going through pinManager:GetActiveObjects() was not enough -- names like "Elden Root
+-- Wayshrine" survived it, so whatever draws them is not reachable that way. Rather than keep
+-- guessing which manager owns which label, work on the control tree: everything inside
+-- ZO_WorldMapContainer is map content, so a visible label in there is a place name.
+--
+-- Scoped to the container deliberately. The title bar and the add-on's own controls live
+-- outside it and are left alone.
+local function ForEachLabel(control, depth, callback)
+	if not control or depth > 6 then
+		return
+	end
+	local childCount = control.GetNumChildren and control:GetNumChildren() or 0
+	for index = 1, childCount do
+		local child = control:GetChild(index)
+		if child then
+			if child.GetType and child:GetType() == CT_LABEL then
+				callback(child)
+			end
+			ForEachLabel(child, depth + 1, callback)
+		end
+	end
+end
+
+function addon:HideMapAreaLabels()
+	if not ZO_WorldMapContainer then
+		return
+	end
+	ForEachLabel(
+		ZO_WorldMapContainer,
+		0,
+		function(label)
+			if not label:IsHidden() then
+				local text = label.GetText and label:GetText()
+				if text and text ~= "" then
+					label:SetHidden(true)
+				end
+			end
+		end
+	)
+end
+
+-- Diagnostic: report what is currently drawing text on the map, so a label that keeps
+-- surviving can be identified by name instead of guessed at.
+function addon:DumpMapAreaLabels()
+	if not ZO_WorldMapContainer then
+		df("[PBsMiniMap] no map container")
+		return
+	end
+	local found = 0
+	ForEachLabel(
+		ZO_WorldMapContainer,
+		0,
+		function(label)
+			local text = label.GetText and label:GetText()
+			if text and text ~= "" then
+				found = found + 1
+				df("[PBsMiniMap] label %s hidden=%s text=%s", tostring(label:GetName()), tostring(label:IsHidden()), tostring(text))
+			end
+		end
+	)
+	df("[PBsMiniMap] %d label(s) with text under ZO_WorldMapContainer", found)
+end
+
 function addon:RefreshMapLocationLabels()
 	local manager = self.locationPinManager
 	if manager and manager.RefreshLocations then
@@ -291,6 +356,7 @@ function addon:SetDormant(value)
 			self:ClearMapLocationLabels()
 			-- Immediately, rather than waiting up to a tick for the maintenance pass.
 			self:HidePinLabels()
+			self:HideMapAreaLabels()
 		end
 		if ZO_WorldMap_HandlePinExit then
 			ZO_WorldMap_HandlePinExit()
@@ -3062,6 +3128,7 @@ function addon:Initialize()
 				self:ApplyLiteAlpha()
 				if not self.dormant and self.account and self.account.hideMapLabels then
 					self:HidePinLabels()
+					self:HideMapAreaLabels()
 				end
 			end
 		)

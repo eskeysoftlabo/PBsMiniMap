@@ -2427,10 +2427,12 @@ function addon:Initialize()
 	-- Map is in front -- the full Tamriel view stays untouched.
 	local lastPlayerX, lastPlayerY = -1, -1
 	local lastMapTile
+	local lastContainerW, lastContainerH = -1, -1
 	local forceMapResync = false
 	function addon:ResetFollowState()
 		lastPlayerX, lastPlayerY = -1, -1
 		lastMapTile = nil
+		lastContainerW, lastContainerH = -1, -1
 		if self.ResetLiteZoomState then
 			self:ResetLiteZoomState()
 		end
@@ -2786,6 +2788,27 @@ function addon:Initialize()
 
 		-- 4. Centre on the player. Done whenever they moved, and also whenever anything above
 		-- disturbed the map, since that is exactly when the pan offset was thrown away.
+		-- The map's drawn size is what centring is measured against, so a change in it means
+		-- the previous centring was computed against something else.
+		--
+		-- This is what left the player off-centre until the first step after a reload: the
+		-- first tick ran before the container had been laid out, centred against nothing
+		-- useful, and recorded the player position as done -- after which "has the player
+		-- moved?" stayed false and it was never retried.
+		local containerW, containerH = -1, -1
+		if ZO_WorldMapContainer then
+			containerW, containerH = ZO_WorldMapContainer:GetDimensions()
+		end
+		if containerW <= 0 or containerH <= 0 then
+			-- Not laid out yet. Leave lastPlayer* alone so the next tick still counts as moved.
+			self.followSkip = "nolayout"
+			return
+		end
+		if zo_abs(containerW - lastContainerW) > 0.5 or zo_abs(containerH - lastContainerH) > 0.5 then
+			lastContainerW, lastContainerH = containerW, containerH
+			disturbed = true
+		end
+
 		local x, y = GetMapPlayerPosition("player")
 		local moved = x and (zo_abs(x - lastPlayerX) >= 0.00005 or zo_abs(y - lastPlayerY) >= 0.00005)
 		if (moved or disturbed) and x then
@@ -3041,6 +3064,10 @@ function addon:Initialize()
 		self:StartLiteMinimapLayoutWatch()
 		self:StartLiteFollowWatch()
 		self:StartLiteZoneWatch()
+		-- EVENT_PLAYER_ACTIVATED may already have fired by the time the watch registers, so
+		-- ask for the first sync outright rather than waiting for an event that has been and
+		-- gone.
+		self:RequestMapResync()
 		if self.account.debug then
 			self:DumpPanZoomApi()
 		end

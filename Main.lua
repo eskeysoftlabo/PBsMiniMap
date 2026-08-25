@@ -232,6 +232,19 @@ function addon:SetDormant(value)
 		if self.ApplyLiteAlpha then
 			self:ApplyLiteAlpha()
 		end
+		-- Labels built while the full map was open are still on the map, and the name of
+		-- whatever was last focused there lingers too. Clear both on the way back.
+		if (self.initLevel or 0) < 3 and self.account and self.account.hideMapLabels then
+			if ZO_MapLocationPins_Manager and ZO_MapLocationPins_Manager.ReleaseAllObjects then
+				ZO_MapLocationPins_Manager:ReleaseAllObjects()
+			end
+			if self.pinManager then
+				self.pinManager:RemovePins("loc")
+			end
+		end
+		if ZO_WorldMap_HandlePinExit then
+			ZO_WorldMap_HandlePinExit()
+		end
 		-- ShowClock only exists once InitMiniMap has run (see initLevel).
 		if self.ShowClock and self.account and self.account.showClock then
 			EVENT_MANAGER:RegisterForUpdate("PBSMINIMAP_MAP_CLOCK", 5000, self.ShowClock)
@@ -2066,6 +2079,7 @@ function addon:Initialize()
 		miniPart = 3,
 		followPlayer = true,
 		liteAlpha = 100,
+		hideMapLabels = true,
 		-- Scale relative to the map's native resolution, same meaning as the original's zoom
 		-- settings (and the same defaults). Renamed from the old liteZoom* keys because those
 		-- held 0..1 values with a completely different meaning.
@@ -2873,6 +2887,36 @@ function addon:Initialize()
 				return orgCanMapZoom(...) or LiteMinimapActive() or false
 			end
 		)
+
+		-- Place names.
+		--
+		-- The labels drawn across the map ("Elden Root", "Snugpod", ...) come from
+		-- ZO_MapLocationPins_Manager. On a full-screen map they are useful; squeezed into a
+		-- 300px minimap they cover most of it.
+		--
+		-- Suppress the refresh rather than deleting the labels afterwards, so none are built
+		-- in the first place. Registered as a hot-path hook like the rest, so the standard map
+		-- gets the game's own version back and keeps its names.
+		if ZO_MapLocationPins_Manager then
+			local orgRefreshLocations
+			orgRefreshLocations =
+				HookHotPath(
+				ZO_MapLocationPins_Manager,
+				"RefreshLocations",
+				function(manager, ...)
+					if LiteMinimapActive() and addon.account and addon.account.hideMapLabels then
+						if manager.ReleaseAllObjects then
+							manager:ReleaseAllObjects()
+						end
+						if addon.pinManager then
+							addon.pinManager:RemovePins("loc")
+						end
+						return
+					end
+					return orgRefreshLocations(manager, ...)
+				end
+			)
+		end
 
 		-- Centring the player needs this one too.
 		--

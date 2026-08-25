@@ -42,6 +42,7 @@ Settings live under **PB's MiniMap** (LibHarvensAddonSettings).
 | Width / Height | Minimap size (min 20) |
 | Offset X / Offset Y | Position relative to screen centre |
 | Opacity | How solid the minimap is; the full map stays solid |
+| Hide place names | Keep location labels off the minimap; the full map keeps them |
 | Follow player | Keep the player centred and pan the map as you move |
 | Zoom: outdoors | Zoom in the open world. Centring needs this above 0 |
 | Zoom: buildings & cities | Zoom on subzone maps, which are much smaller |

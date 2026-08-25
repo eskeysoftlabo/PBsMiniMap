@@ -416,6 +416,32 @@ function addon:InitSettings()
 		settings:AddSetting(
 			{
 				type = LibHarvensAddonSettings.ST_CHECKBOX,
+				label = "Hide place names",
+				tooltip = "Keep the map's location labels (\"Elden Root\", \"Snugpod\", ...) off the minimap. They are built for a full-screen map and cover most of a small one. The full map keeps its names either way.",
+				default = self.accountDefaults.hideMapLabels,
+				getFunction = function()
+					return self.account.hideMapLabels
+				end,
+				setFunction = function(value)
+					self.account.hideMapLabels = value
+					-- Take effect now: clear what is on screen when switching it on, and ask
+					-- the game to rebuild the labels when switching it off.
+					if value then
+						if ZO_MapLocationPins_Manager and ZO_MapLocationPins_Manager.ReleaseAllObjects then
+							ZO_MapLocationPins_Manager:ReleaseAllObjects()
+						end
+						if self.pinManager then
+							self.pinManager:RemovePins("loc")
+						end
+					elseif ZO_MapLocationPins_Manager and ZO_MapLocationPins_Manager.RefreshLocations then
+						ZO_MapLocationPins_Manager:RefreshLocations()
+					end
+				end
+			}
+		)
+		settings:AddSetting(
+			{
+				type = LibHarvensAddonSettings.ST_CHECKBOX,
 				label = "Follow player",
 				tooltip = "Keep the player centred on the minimap and move the map as you travel.",
 				default = self.accountDefaults.followPlayer,

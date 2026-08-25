@@ -198,8 +198,12 @@ function addon:EnsureZoneTitle()
 	if not wm then
 		return nil
 	end
-	-- The name matters: the label-hiding pass skips anything of ours by name.
-	zoneTitle = wm:CreateControl("PBsMiniMapZoneTitle", GuiRoot, CT_LABEL)
+	-- Parented to ZO_WorldMap, the way the original parents its own title.
+	--
+	-- It was on GuiRoot so the opacity setting would not fade the text, but nothing appeared
+	-- there, and a name that fades with the map beats one that never shows. The label-hiding
+	-- pass walks ZO_WorldMap, but skips anything named PBsMiniMap*, so this is left alone.
+	zoneTitle = wm:CreateControl("PBsMiniMapZoneTitle", ZO_WorldMap, CT_LABEL)
 	zoneTitle:SetHorizontalAlignment(TEXT_ALIGN_CENTER)
 	zoneTitle:SetVerticalAlignment(TEXT_ALIGN_BOTTOM)
 	zoneTitle:SetAnchor(BOTTOM, ZO_WorldMap, TOP, 0, -2)
@@ -207,9 +211,9 @@ function addon:EnsureZoneTitle()
 	-- a child of GuiRoot it otherwise sits at the bottom of the pile where the rest of the HUD
 	-- can cover it -- which is the likely reason nothing appeared.
 	zoneTitle:SetColor(1, 1, 1, 1)
-	zoneTitle:SetDrawLayer(DL_OVERLAY)
-	zoneTitle:SetDrawTier(DT_HIGH)
+	zoneTitle:SetDrawLayer(DL_TEXT)
 	zoneTitle:SetMouseEnabled(false)
+	zoneTitle:SetExcludeFromResizeToFitExtents(true)
 	zoneTitle:SetHidden(true)
 	return zoneTitle
 end
@@ -238,6 +242,19 @@ function addon:UpdateZoneTitle()
 	-- being hidden has to be checked explicitly or the name is left floating over menus.
 	local mapShowing = ZO_WorldMap and not ZO_WorldMap:IsHidden()
 	local wanted = account.showZoneTitle and mapShowing and not self.dormant and (self.initLevel or 0) < 3 and account.enableMap
+
+	if not self.zoneTitleReported then
+		self.zoneTitleReported = true
+		df(
+			"[PBsMiniMap] zone title: setting=%s mapShowing=%s dormant=%s level=%s name=%s",
+			tostring(account.showZoneTitle),
+			tostring(mapShowing),
+			tostring(self.dormant),
+			tostring(self.initLevel),
+			tostring(CurrentZoneName())
+		)
+	end
+
 	if not wanted then
 		if zoneTitle then
 			zoneTitle:SetHidden(true)
@@ -274,6 +291,12 @@ function addon:UpdateZoneTitle()
 	end
 	control:SetText(text)
 	control:SetHidden(text == "")
+
+	if not self.zoneTitleShownReported then
+		self.zoneTitleShownReported = true
+		local w, h = control:GetDimensions()
+		df("[PBsMiniMap] zone title shown: text=%s size=%.0fx%.0f hidden=%s", tostring(text), w, h, tostring(control:IsHidden()))
+	end
 end
 
 -- Walk the map area and hide every label that is actually rendering text.

@@ -397,27 +397,52 @@ function addon:InitSettings()
 				end
 			}
 		)
-		settings:AddSetting(
-			{
-				type = LibHarvensAddonSettings.ST_SLIDER,
-				label = "Zoom",
-				tooltip = "How far the minimap is zoomed in. Centring only shows once this is high enough that the map is larger than the window - at 0 the whole zone fits and there is nothing to pan. Applies immediately.",
-				min = 0,
-				max = 1,
-				step = 0.01,
-				default = self.accountDefaults.liteZoom,
-				format = "%.2f",
-				unit = "",
-				getFunction = function()
-					return self.account.liteZoom or 0.5
-				end,
-				setFunction = function(value)
-					self.account.liteZoom = value
-					if self.ResetFollowState then
-						self:ResetFollowState()
+		-- One zoom per context: indoors the game swaps to a much smaller map, where an
+		-- outdoor zoom level is far too close to see anything around the player.
+		local function addZoomSetting(label, key, tooltip)
+			settings:AddSetting(
+				{
+					type = LibHarvensAddonSettings.ST_SLIDER,
+					label = label,
+					tooltip = tooltip,
+					min = 0,
+					max = 1,
+					step = 0.01,
+					default = self.accountDefaults[key],
+					format = "%.2f",
+					unit = "",
+					getFunction = function()
+						return self.account[key] or self.accountDefaults[key]
+					end,
+					setFunction = function(value)
+						self.account[key] = value
+						if self.ResetFollowState then
+							self:ResetFollowState()
+						end
 					end
-				end
-			}
+				}
+			)
+		end
+
+		addZoomSetting(
+			"Zoom: outdoors",
+			"liteZoom",
+			"Zoom used in the open world. Centring only shows once this is high enough that the map is larger than the window - at 0 the whole zone fits and there is nothing to pan. Applies immediately."
+		)
+		addZoomSetting(
+			"Zoom: buildings & cities",
+			"liteZoomSubZone",
+			"Zoom used inside buildings, houses and city maps. These maps are much smaller, so a lower value here keeps the area around the player visible."
+		)
+		addZoomSetting(
+			"Zoom: dungeons",
+			"liteZoomDungeon",
+			"Zoom used inside dungeons and trials."
+		)
+		addZoomSetting(
+			"Zoom: battlegrounds",
+			"liteZoomBattleground",
+			"Zoom used in battlegrounds."
 		)
 		settings:AddSetting(
 			{

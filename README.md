@@ -41,7 +41,10 @@ Settings live under **PB's MiniMap** (LibHarvensAddonSettings).
 | Width / Height | Minimap size (min 20) |
 | Offset X / Offset Y | Position relative to screen centre |
 | Follow player | Keep the player centred and pan the map as you move |
-| Zoom | How far in the minimap is zoomed. Centring needs this above 0 |
+| Zoom: outdoors | Zoom in the open world. Centring needs this above 0 |
+| Zoom: buildings & cities | Zoom on subzone maps, which are much smaller |
+| Zoom: dungeons | Zoom in dungeons and trials |
+| Zoom: battlegrounds | Zoom in battlegrounds |
 | Show mini map now | Live preview inside the settings screen |
 | Re-apply layout | Force the layout to be re-asserted |
 | Debug: init level | Diagnostic. **2 is the working configuration**; 3+ reproduces the memory crash |

@@ -2033,6 +2033,9 @@ function addon:Initialize()
 		miniPart = 3,
 		followPlayer = true,
 		liteZoom = 0.5,
+		liteZoomSubZone = 0.2,
+		liteZoomDungeon = 0.3,
+		liteZoomBattleground = 0.3,
 		zoom = 1.3,
 		mountedZoom = 1,
 		subZoneZoom = 1,
@@ -2326,6 +2329,27 @@ function addon:Initialize()
 		lastPlayerX, lastPlayerY = -1, -1
 	end
 
+	-- Which zoom setting applies right now.
+	--
+	-- Indoors the game swaps to a much smaller map (a building or city is MAPTYPE_SUBZONE, a
+	-- dungeon is MAP_CONTENT_DUNGEON). A zoom level that frames a whole zone nicely is far too
+	-- close on one of those, so each context gets its own setting -- the same split the
+	-- original add-on makes.
+	local function CurrentZoomLevel(account)
+		local contentType = GetMapContentType()
+		if contentType == MAP_CONTENT_BATTLEGROUND then
+			return account.liteZoomBattleground or account.liteZoom or 0.5
+		elseif contentType == MAP_CONTENT_DUNGEON then
+			return account.liteZoomDungeon or account.liteZoom or 0.5
+		elseif GetMapType() == MAPTYPE_SUBZONE then
+			return account.liteZoomSubZone or account.liteZoom or 0.5
+		end
+		return account.liteZoom or 0.5
+	end
+	addon.CurrentZoomLevel = function(self)
+		return CurrentZoomLevel(self.account)
+	end
+
 	function addon:FollowPlayerTick()
 		if self.dormant then
 			return
@@ -2360,10 +2384,11 @@ function addon:Initialize()
 		-- 2. Hold the requested zoom. Re-asserted rather than set once, because the game
 		-- resets it on map changes.
 		local panZoom = self.panZoom
-		if panZoom and account.liteZoom then
+		local wantZoom = CurrentZoomLevel(account)
+		if panZoom and wantZoom then
 			local current = panZoom:GetCurrentNormalizedZoom()
-			if not current or zo_abs(current - account.liteZoom) > 0.005 then
-				panZoom:SetCurrentNormalizedZoom(account.liteZoom)
+			if not current or zo_abs(current - wantZoom) > 0.005 then
+				panZoom:SetCurrentNormalizedZoom(wantZoom)
 				disturbed = true
 			end
 		end

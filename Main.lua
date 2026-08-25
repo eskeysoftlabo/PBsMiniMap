@@ -2240,12 +2240,22 @@ function addon:Initialize()
 			ZO_WorldMap_OnResizeStop(ZO_WorldMap)
 		end
 
-		-- Only the outer window is pinned. Forcing ZO_WorldMapScroll to a size as well left
-		-- the map's own geometry disagreeing with its layout, and the pan offset is computed
-		-- from that geometry -- which is why the centre landed somewhere else entirely. The
-		-- scroll is anchored inside ZO_WorldMap and sizes itself correctly on its own.
+		-- Outer window: pinned with min == max, so nothing the game does can resize it.
 		ZO_WorldMap:SetDimensionConstraints(wantW, wantH, wantW, wantH)
 		ZO_WorldMap:SetDimensions(wantW, wantH)
+
+		-- Scroll viewport: sized, but NOT pinned.
+		--
+		-- The visible map only changes size when the scroll does -- leaving it alone made the
+		-- size setting do nothing again. But pinning it the way the outer window is pinned
+		-- left the map's geometry permanently disagreeing with its layout, and since the pan
+		-- offset is computed from that geometry, the centre landed somewhere else entirely.
+		-- Setting the size while leaving the constraints loose gives the size change without
+		-- fighting the map system for the rest of the frame.
+		if ZO_WorldMapScroll then
+			ZO_WorldMapScroll:SetDimensionConstraints(20, 20, uiWidth, uiHeight)
+			ZO_WorldMapScroll:SetDimensions(wantW, wantH)
+		end
 
 		ZO_WorldMap_UpdateMap = orgZO_WorldMap_UpdateMap
 	end

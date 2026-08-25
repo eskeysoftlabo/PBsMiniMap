@@ -113,7 +113,7 @@ function addon:InitSettings()
 	settings:AddSetting(
 		{
 			type = LibHarvensAddonSettings.ST_LABEL,
-			label = "Based on Votan's Minimap by votan"
+			label = GetString(SI_PBSMINIMAP_CREDIT)
 		}
 	)
 
@@ -155,8 +155,8 @@ function addon:InitSettings()
 	settings:AddSetting(
 		{
 			type = LibHarvensAddonSettings.ST_SLIDER,
-			label = "Debug: init level",
-			tooltip = "Diagnostic, locked. 2 is the working configuration; 3+ reproduces the console memory crash. Kept visible as a record of how that was isolated.",
+			label = GetString(SI_PBSMINIMAP_DEBUG_INIT_LEVEL),
+			tooltip = GetString(SI_PBSMINIMAP_DEBUG_INIT_LEVEL_TOOLTIP),
 			min = 0,
 			max = 4,
 			step = 1,
@@ -175,8 +175,8 @@ function addon:InitSettings()
 	settings:AddSetting(
 		{
 			type = LibHarvensAddonSettings.ST_SLIDER,
-			label = "Debug: minimap part",
-			tooltip = "Diagnostic, locked. Only meaningful at init level 3+, which is not the shipping configuration.",
+			label = GetString(SI_PBSMINIMAP_DEBUG_MINIMAP_PART),
+			tooltip = GetString(SI_PBSMINIMAP_DEBUG_MINIMAP_PART_TOOLTIP),
 			min = 0,
 			max = 3,
 			step = 1,
@@ -195,8 +195,8 @@ function addon:InitSettings()
 	settings:AddSetting(
 		{
 			type = LibHarvensAddonSettings.ST_CHECKBOX,
-			label = "Debug: log to chat",
-			tooltip = "Diagnostic, locked. The trail is still recorded to saved variables either way.",
+			label = GetString(SI_PBSMINIMAP_DEBUG_LOG),
+			tooltip = GetString(SI_PBSMINIMAP_DEBUG_LOG_TOOLTIP),
 			default = self.accountDefaults.debug,
 			getFunction = function()
 				return self.account.debug
@@ -299,7 +299,7 @@ function addon:InitSettings()
 			{
 				type = LibHarvensAddonSettings.ST_CHECKBOX,
 				label = GetString(SI_PBSMINIMAP_SHOW_IN_SETTINGS),
-				tooltip = "Show the map here while adjusting size and position.",
+				tooltip = GetString(SI_PBSMINIMAP_LITE_PREVIEW_TOOLTIP),
 				default = false,
 				getFunction = function()
 					return self.litePreviewAdded == true
@@ -316,8 +316,8 @@ function addon:InitSettings()
 		settings:AddSetting(
 			{
 				type = LibHarvensAddonSettings.ST_SLIDER,
-				label = "Width",
-				tooltip = "Width of the minimap window.",
+				label = GetString(SI_PBSMINIMAP_LITE_WIDTH),
+				tooltip = GetString(SI_PBSMINIMAP_LITE_WIDTH_TOOLTIP),
 				min = 20,
 				max = math.floor(uiWidth),
 				step = 2,
@@ -336,8 +336,8 @@ function addon:InitSettings()
 		settings:AddSetting(
 			{
 				type = LibHarvensAddonSettings.ST_SLIDER,
-				label = "Height",
-				tooltip = "Height of the minimap window.",
+				label = GetString(SI_PBSMINIMAP_LITE_HEIGHT),
+				tooltip = GetString(SI_PBSMINIMAP_LITE_HEIGHT_TOOLTIP),
 				min = 20,
 				max = math.floor(uiHeight),
 				step = 2,
@@ -356,8 +356,8 @@ function addon:InitSettings()
 		settings:AddSetting(
 			{
 				type = LibHarvensAddonSettings.ST_SLIDER,
-				label = "Offset X",
-				tooltip = "Horizontal offset from the centre of the screen. Negative moves left.",
+				label = GetString(SI_PBSMINIMAP_LITE_OFFSET_X),
+				tooltip = GetString(SI_PBSMINIMAP_LITE_OFFSET_X_TOOLTIP),
 				min = -math.floor(uiWidth / 2),
 				max = math.floor(uiWidth / 2),
 				step = 4,
@@ -376,8 +376,8 @@ function addon:InitSettings()
 		settings:AddSetting(
 			{
 				type = LibHarvensAddonSettings.ST_SLIDER,
-				label = "Offset Y",
-				tooltip = "Vertical offset from the centre of the screen. Negative moves up.",
+				label = GetString(SI_PBSMINIMAP_LITE_OFFSET_Y),
+				tooltip = GetString(SI_PBSMINIMAP_LITE_OFFSET_Y_TOOLTIP),
 				min = -math.floor(uiHeight / 2),
 				max = math.floor(uiHeight / 2),
 				step = 4,
@@ -396,8 +396,8 @@ function addon:InitSettings()
 		settings:AddSetting(
 			{
 				type = LibHarvensAddonSettings.ST_SLIDER,
-				label = "Opacity",
-				tooltip = "How solid the minimap is. Applies to the map, its pins and its frame together, and only while the minimap is on the HUD -- the full map is always drawn solid.",
+				label = GetString(SI_PBSMINIMAP_LITE_OPACITY),
+				tooltip = GetString(SI_PBSMINIMAP_LITE_OPACITY_TOOLTIP),
 				min = 10,
 				max = 100,
 				step = 5,
@@ -416,8 +416,8 @@ function addon:InitSettings()
 		settings:AddSetting(
 			{
 				type = LibHarvensAddonSettings.ST_CHECKBOX,
-				label = "Hide place names",
-				tooltip = "Keep the map's location labels (\"Elden Root\", \"Snugpod\", ...) off the minimap. They are built for a full-screen map and cover most of a small one. The full map keeps its names either way.",
+				label = GetString(SI_PBSMINIMAP_LITE_HIDE_LABELS),
+				tooltip = GetString(SI_PBSMINIMAP_LITE_HIDE_LABELS_TOOLTIP),
 				default = self.accountDefaults.hideMapLabels,
 				getFunction = function()
 					return self.account.hideMapLabels
@@ -442,8 +442,8 @@ function addon:InitSettings()
 		settings:AddSetting(
 			{
 				type = LibHarvensAddonSettings.ST_CHECKBOX,
-				label = "Follow player",
-				tooltip = "Keep the player centred on the minimap and move the map as you travel.",
+				label = GetString(SI_PBSMINIMAP_LITE_FOLLOW),
+				tooltip = GetString(SI_PBSMINIMAP_LITE_FOLLOW_TOOLTIP),
 				default = self.accountDefaults.followPlayer,
 				getFunction = function()
 					return self.account.followPlayer
@@ -486,31 +486,31 @@ function addon:InitSettings()
 		end
 
 		addZoomSetting(
-			"Zoom: outdoors",
+			GetString(SI_PBSMINIMAP_LITE_ZOOM_OUTDOOR),
 			"liteScale",
-			"Magnification in the open world, relative to the map's native resolution. Higher shows a smaller area in more detail. Applies immediately."
+			GetString(SI_PBSMINIMAP_LITE_ZOOM_OUTDOOR_TOOLTIP)
 		)
 		addZoomSetting(
-			"Zoom: buildings & cities",
+			GetString(SI_PBSMINIMAP_LITE_ZOOM_SUBZONE),
 			"liteScaleSubZone",
-			"Magnification inside buildings, houses and city maps. These maps are much smaller, so a lower value here keeps the area around the player visible."
+			GetString(SI_PBSMINIMAP_LITE_ZOOM_SUBZONE_TOOLTIP)
 		)
 		addZoomSetting(
-			"Zoom: dungeons",
+			GetString(SI_PBSMINIMAP_LITE_ZOOM_DUNGEON),
 			"liteScaleDungeon",
-			"Magnification inside dungeons and trials."
+			GetString(SI_PBSMINIMAP_LITE_ZOOM_DUNGEON_TOOLTIP)
 		)
 		addZoomSetting(
-			"Zoom: battlegrounds",
+			GetString(SI_PBSMINIMAP_LITE_ZOOM_BG),
 			"liteScaleBattleground",
-			"Magnification in battlegrounds."
+			GetString(SI_PBSMINIMAP_LITE_ZOOM_BG_TOOLTIP)
 		)
 		settings:AddSetting(
 			{
 				type = LibHarvensAddonSettings.ST_BUTTON,
 				label = "",
-				tooltip = "Re-apply the size and position now.",
-				buttonText = "Re-apply layout",
+				tooltip = GetString(SI_PBSMINIMAP_LITE_REAPPLY_TOOLTIP),
+				buttonText = GetString(SI_PBSMINIMAP_LITE_REAPPLY),
 				clickHandler = applyLayout
 			}
 		)

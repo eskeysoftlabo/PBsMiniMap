@@ -191,7 +191,7 @@ end
 -- Scoped to the container deliberately. The title bar and the add-on's own controls live
 -- outside it and are left alone.
 local function ForEachLabel(control, depth, callback)
-	if not control or depth > 6 then
+	if not control or depth > 8 then
 		return
 	end
 	local childCount = control.GetNumChildren and control:GetNumChildren() or 0
@@ -206,15 +206,28 @@ local function ForEachLabel(control, depth, callback)
 	end
 end
 
+-- Search from ZO_WorldMap, not ZO_WorldMapContainer.
+--
+-- The name of whatever the cursor was last over -- "Elden Root Wayshrine" and the like -- is
+-- drawn over the map frame but is not a child of the container, so a search scoped to the
+-- container never saw it.
+--
+-- Two things are skipped: this add-on's own controls, and the map title. Everything else
+-- inside the map window that is showing text is a leftover from the full map.
+local function IsOurControl(control)
+	local name = control.GetName and control:GetName()
+	return name ~= nil and (zo_plainstrfind(name, "PBsMiniMap") or name == "ZO_WorldMapTitle")
+end
+
 function addon:HideMapAreaLabels()
-	if not ZO_WorldMapContainer then
+	if not ZO_WorldMap then
 		return
 	end
 	ForEachLabel(
-		ZO_WorldMapContainer,
+		ZO_WorldMap,
 		0,
 		function(label)
-			if not label:IsHidden() then
+			if not label:IsHidden() and not IsOurControl(label) then
 				local text = label.GetText and label:GetText()
 				if text and text ~= "" then
 					label:SetHidden(true)
@@ -227,13 +240,13 @@ end
 -- Diagnostic: report what is currently drawing text on the map, so a label that keeps
 -- surviving can be identified by name instead of guessed at.
 function addon:DumpMapAreaLabels()
-	if not ZO_WorldMapContainer then
-		df("[PBsMiniMap] no map container")
+	if not ZO_WorldMap then
+		df("[PBsMiniMap] no map window")
 		return
 	end
 	local found = 0
 	ForEachLabel(
-		ZO_WorldMapContainer,
+		ZO_WorldMap,
 		0,
 		function(label)
 			local text = label.GetText and label:GetText()
@@ -243,7 +256,7 @@ function addon:DumpMapAreaLabels()
 			end
 		end
 	)
-	df("[PBsMiniMap] %d label(s) with text under ZO_WorldMapContainer", found)
+	df("[PBsMiniMap] %d label(s) with text under ZO_WorldMap", found)
 end
 
 function addon:RefreshMapLocationLabels()
@@ -2944,6 +2957,12 @@ function addon:Initialize()
 		if (moved or disturbed) and x then
 			lastPlayerX, lastPlayerY = x, y
 			self:CentreOnPlayer(x, y)
+		end
+
+		-- Also here, not just on the 200ms maintenance pass: the game puts these labels back
+		-- on its own schedule, and at 200ms they were visible long enough to read.
+		if account.hideMapLabels then
+			self:HideMapAreaLabels()
 		end
 	end
 

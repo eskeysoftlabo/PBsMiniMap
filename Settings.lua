@@ -410,7 +410,9 @@ function addon:InitSettings()
 					type = LibHarvensAddonSettings.ST_SLIDER,
 					label = label,
 					tooltip = tooltip,
-					min = 0,
+					-- Floor of 0.05 rather than 0: at 0 the whole map fits the window, there is
+					-- no pan room at all, and "keep the player centred" silently stops working.
+					min = 0.05,
 					max = 1,
 					step = 0.01,
 					default = self.accountDefaults[key],

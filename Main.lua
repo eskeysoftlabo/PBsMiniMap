@@ -2366,16 +2366,26 @@ function addon:Initialize()
 	-- dungeon is MAP_CONTENT_DUNGEON). A zoom level that frames a whole zone nicely is far too
 	-- close on one of those, so each context gets its own setting -- the same split the
 	-- original add-on makes.
+	local MIN_USEFUL_ZOOM = 0.05
 	local function CurrentZoomLevel(account)
+		-- Zero means the whole map fits the window, so there is nothing to pan and the player
+		-- cannot be centred. Treat it as the floor rather than letting the feature quietly
+		-- do nothing -- a saved 0 from an earlier build would otherwise stay broken forever.
+		local function clamp(value)
+			if not value or value < MIN_USEFUL_ZOOM then
+				return MIN_USEFUL_ZOOM
+			end
+			return value
+		end
 		local contentType = GetMapContentType()
 		if contentType == MAP_CONTENT_BATTLEGROUND then
-			return account.liteZoomBattleground or account.liteZoom or 0.5
+			return clamp(account.liteZoomBattleground or account.liteZoom)
 		elseif contentType == MAP_CONTENT_DUNGEON then
-			return account.liteZoomDungeon or account.liteZoom or 0.5
+			return clamp(account.liteZoomDungeon or account.liteZoom)
 		elseif GetMapType() == MAPTYPE_SUBZONE then
-			return account.liteZoomSubZone or account.liteZoom or 0.5
+			return clamp(account.liteZoomSubZone or account.liteZoom)
 		end
-		return account.liteZoom or 0.5
+		return clamp(account.liteZoom)
 	end
 	addon.CurrentZoomLevel = function(self)
 		return CurrentZoomLevel(self.account)
@@ -2429,6 +2439,15 @@ function addon:Initialize()
 				if zoomAttempts < 10 then
 					zoomAttempts = zoomAttempts + 1
 					panZoom:SetCurrentNormalizedZoom(wantZoom)
+
+					-- The public setter is gated on the map being in a mode the game considers
+					-- zoomable, which the HUD is not; without a custom map mode of our own the
+					-- request was simply dropped and the zoom sat at maximum. Fall back to the
+					-- internal setter, which is the same one the original add-on reaches for.
+					local applied = panZoom:GetCurrentNormalizedZoom()
+					if (not applied or zo_abs(applied - wantZoom) > 0.005) and panZoom.SetCurrentNormalizedZoomInternal then
+						panZoom:SetCurrentNormalizedZoomInternal(wantZoom)
+					end
 					disturbed = true
 				end
 			else

@@ -487,6 +487,19 @@ function addon:SetDormant(value)
 			ZO_WorldMap_HandlePinExit()
 		end
 
+		-- Drop any custom zoom range the map picked up.
+		--
+		-- Opening the map from a wayshrine puts it in a special mode, and the game installs a
+		-- custom zoom range for that view. Custom levels sit above the range we set with
+		-- SetMapZoomMinMax, so until they are cleared the minimap keeps whatever the wayshrine
+		-- view was using, no matter what we ask for. The original clears them on both mode
+		-- transitions; both live in InitMiniMap, which this path skips, so nothing did.
+		if ZO_WorldMap_ClearCustomZoomLevels then
+			ZO_WorldMap_ClearCustomZoomLevels()
+		elseif self.panZoom and self.panZoom.ClearCustomZoomMimMax then
+			self.panZoom:ClearCustomZoomMimMax()
+		end
+
 		-- Close out a fast-travel session properly.
 		--
 		-- Opening the map from a wayshrine puts the map manager into a special mode and starts

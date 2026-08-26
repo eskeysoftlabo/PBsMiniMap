@@ -464,6 +464,26 @@ function addon:SetDormant(value)
 		if ZO_WorldMap_HandlePinExit then
 			ZO_WorldMap_HandlePinExit()
 		end
+
+		-- Close out a fast-travel session properly.
+		--
+		-- Opening the map from a wayshrine puts the map manager into a special mode and starts
+		-- an interaction. Backing out leaves both standing unless they are cleared, and the
+		-- wayshrine then stays unusable until the player walks away and returns. The original
+		-- clears them in GoMiniMapMode and on player deactivation -- both inside InitMiniMap,
+		-- which this path skips, so nothing was clearing them at all.
+		if WORLD_MAP_MANAGER and WORLD_MAP_MANAGER.inSpecialMode then
+			if WORLD_MAP_MANAGER.PopSpecialMode then
+				WORLD_MAP_MANAGER:PopSpecialMode()
+			end
+			if EndInteraction then
+				EndInteraction(INTERACTION_FAST_TRAVEL_KEEP)
+				EndInteraction(INTERACTION_FAST_TRAVEL)
+			end
+		elseif GetKeepFastTravelInteraction and GetKeepFastTravelInteraction() then
+			EndInteraction(INTERACTION_FAST_TRAVEL_KEEP)
+		end
+
 		if self.UpdateZoneTitle then
 			self:UpdateZoneTitle()
 		end
@@ -3269,7 +3289,8 @@ function addon:Initialize()
 				self:MaintainLiteMinimapLayout()
 				self:ApplyLiteAlpha()
 				self:ApplyLiteBorder()
-				if not self.dormant and self.account and self.account.hideMapLabels then
+				local mapVisible = ZO_WorldMap and not ZO_WorldMap:IsHidden()
+				if mapVisible and not self.dormant and self.account and self.account.hideMapLabels then
 					self:HidePinLabels()
 					self:HideMapAreaLabels()
 				end
@@ -3619,7 +3640,16 @@ local function InitMemoryWatchdog()
 		-- Drive dormancy from the observed state every frame. Scene StateChange callbacks
 		-- proved unreliable here (dormant never engaged on console), so the same value the
 		-- diagnostics report is the value that decides whether the add-on stands down.
+		--
+		-- That is the only part that has to run every frame. Building the snapshot means
+		-- reading the add-on memory pool and querying several scenes, so it is skipped
+		-- entirely unless the (locked, off by default) debug output is on -- there is nothing
+		-- to report to otherwise, and this runs behind every full-screen UI in the game.
 		addon:SetDormant(addon.IsWorldMapInFront())
+
+		if not account.debug then
+			return
+		end
 
 		local used, state = Snapshot()
 		-- Print on any state change, or on a 1MB move in either direction. Steady frames stay

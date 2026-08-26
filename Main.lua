@@ -206,7 +206,8 @@ function addon:EnsureZoneTitle()
 	zoneTitle = wm:CreateControl("PBsMiniMapZoneTitle", ZO_WorldMap, CT_LABEL)
 	zoneTitle:SetHorizontalAlignment(TEXT_ALIGN_CENTER)
 	zoneTitle:SetVerticalAlignment(TEXT_ALIGN_BOTTOM)
-	zoneTitle:SetAnchor(BOTTOM, ZO_WorldMap, TOP, 0, -2)
+	-- -4 rather than -2: at -2 the descenders of the text touched the map's top border.
+	zoneTitle:SetAnchor(BOTTOM, ZO_WorldMap, TOP, 0, -4)
 	-- Explicit colour, draw layer and tier. A fresh control has none of these settled, and as
 	-- a child of GuiRoot it otherwise sits at the bottom of the pile where the rest of the HUD
 	-- can cover it -- which is the likely reason nothing appeared.

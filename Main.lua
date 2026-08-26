@@ -168,19 +168,6 @@ end
 -- Only ever hides. Unhiding selectively would mean guessing which labels the game wanted
 -- visible; instead the standard map gets a refresh, which rebuilds the pins with the game's
 -- own choices.
-function addon:HidePinLabels()
-	if not self.pinManager or not self.pinManager.GetActiveObjects then
-		return
-	end
-	for _, pin in pairs(self.pinManager:GetActiveObjects()) do
-		local control = pin.GetControl and pin:GetControl()
-		local label = control and control.GetNamedChild and control:GetNamedChild("Label")
-		if label and not label:IsHidden() then
-			label:SetHidden(true)
-		end
-	end
-end
-
 -- Zone name above the minimap.
 --
 -- A control of our own rather than ZO_WorldMapTitle: that one belongs to the map window and
@@ -189,6 +176,7 @@ end
 -- anchored to the map window so it follows wherever the minimap is put.
 local zoneTitle
 local lastTitleFontSize
+local lastTitleText, lastTitleWidth, lastTitleHeight
 
 function addon:EnsureZoneTitle()
 	if zoneTitle or not ZO_WorldMap then
@@ -266,11 +254,18 @@ function addon:UpdateZoneTitle()
 
 	-- Size it explicitly. A label with no dimensions can end up zero-width, in which case the
 	-- text is there but nothing is drawn. Width follows the minimap so the name sits over it.
+	--
+	-- Both the size and the text are only pushed when they have actually changed. This runs
+	-- five times a second, and setting either invalidates layout whether or not the value
+	-- differs.
 	local width = ZO_WorldMap and ZO_WorldMap:GetWidth() or 0
 	if width < 120 then
 		width = 120
 	end
-	control:SetDimensions(width, size * 1.6)
+	if lastTitleWidth ~= width or lastTitleHeight ~= size then
+		lastTitleWidth, lastTitleHeight = width, size
+		control:SetDimensions(width, size * 1.6)
+	end
 
 	local name = CurrentZoneName()
 	local text = ZO_CachedStrFormat(SI_ZONE_NAME, name)
@@ -279,7 +274,10 @@ function addon:UpdateZoneTitle()
 		-- showing nothing.
 		text = name
 	end
-	control:SetText(text)
+	if lastTitleText ~= text then
+		lastTitleText = text
+		control:SetText(text)
+	end
 	control:SetHidden(text == "")
 
 end
@@ -307,6 +305,18 @@ local function ForEachLabel(control, depth, callback)
 			ForEachLabel(child, depth + 1, callback)
 		end
 	end
+end
+
+-- The sweep is not cheap: ZO_WorldMapContainer holds every map pin, so this walks hundreds
+-- of controls. It used to run from both the 100ms and the 200ms tick, roughly fifteen times a
+-- second, to catch labels the game had just put back.
+--
+-- Almost all of those runs found nothing. The game only reveals these labels around map
+-- changes and around returning from the full map, so the sweep is now requested at those
+-- points and otherwise happens once a second as insurance.
+local labelSweepPending = true
+function addon:RequestLabelSweep()
+	labelSweepPending = true
 end
 
 -- Search from ZO_WorldMap, not ZO_WorldMapContainer.
@@ -338,6 +348,18 @@ function addon:HideMapAreaLabels()
 			end
 		end
 	)
+end
+
+-- Runs the sweep when something has asked for one, and otherwise at most once a second.
+local lastLabelSweepMs = 0
+function addon:SweepMapLabelsIfDue()
+	local now = GetFrameTimeMilliseconds and GetFrameTimeMilliseconds() or 0
+	if not labelSweepPending and now - lastLabelSweepMs < 1000 then
+		return
+	end
+	labelSweepPending = false
+	lastLabelSweepMs = now
+	self:HideMapAreaLabels()
 end
 
 function addon:RefreshMapLocationLabels()
@@ -458,7 +480,7 @@ function addon:SetDormant(value)
 		if (self.initLevel or 0) < 3 and self.account and self.account.hideMapLabels then
 			self:ClearMapLocationLabels()
 			-- Immediately, rather than waiting up to a tick for the maintenance pass.
-			self:HidePinLabels()
+			self:RequestLabelSweep()
 			self:HideMapAreaLabels()
 		end
 		if ZO_WorldMap_HandlePinExit then
@@ -2700,23 +2722,20 @@ function addon:Initialize()
 		return LiteSizeMatches(account) and LitePositionMatches(account)
 	end
 
-	-- Exposed so the follow tick can ask "has it drifted?" without going through the
-	-- maintenance tick's backoff bookkeeping. Defined after LiteLayoutMatches so it captures
-	-- the local rather than a nil global.
-	function addon:IsLiteLayoutCurrent()
-		local account = self.account
-		if not account or not ZO_WorldMap or ZO_WorldMap:IsHidden() then
-			return true
-		end
-		return LiteLayoutMatches(account)
-	end
-
 	function addon:IsLiteSizeCurrent()
 		local account = self.account
 		if not account or not ZO_WorldMap or ZO_WorldMap:IsHidden() then
 			return true
 		end
 		return LiteSizeMatches(account)
+	end
+
+	function addon:IsLitePositionCurrent()
+		local account = self.account
+		if not account or not ZO_WorldMap or ZO_WorldMap:IsHidden() then
+			return true
+		end
+		return LitePositionMatches(account)
 	end
 
 	function addon:MaintainLiteMinimapLayout()
@@ -3177,13 +3196,13 @@ function addon:Initialize()
 		-- right with two anchor calls and disturbs nothing; a size change means a real
 		-- re-layout, which also throws the pan away, so that one has to be re-centred after.
 		self:ResetLiteLayoutBackoff()
-		if not self:IsLiteLayoutCurrent() then
-			if self:IsLiteSizeCurrent() then
-				self:ApplyLiteAnchorOnly()
-			else
-				self:ApplyLiteMinimapLayout()
-				disturbed = true
-			end
+		-- Size and position are asked separately, so the comparisons run once each. Checking
+		-- the combined state first and then the size again repeated half of them every tick.
+		if not self:IsLiteSizeCurrent() then
+			self:ApplyLiteMinimapLayout()
+			disturbed = true
+		elseif not self:IsLitePositionCurrent() then
+			self:ApplyLiteAnchorOnly()
 		end
 
 		-- 4. Centre on the player. Done whenever they moved, and also whenever anything above
@@ -3216,10 +3235,10 @@ function addon:Initialize()
 			self:CentreOnPlayer(x, y)
 		end
 
-		-- Also here, not just on the 200ms maintenance pass: the game puts these labels back
-		-- on its own schedule, and at 200ms they were visible long enough to read.
-		if account.hideMapLabels then
-			self:HideMapAreaLabels()
+		-- The sweep itself has moved to the maintenance pass. A map change is when the game
+		-- puts these labels back, so ask for one then rather than walking the tree every tick.
+		if disturbed and account.hideMapLabels then
+			self:RequestLabelSweep()
 		end
 	end
 
@@ -3405,8 +3424,7 @@ function addon:Initialize()
 				self:ApplyLiteBorder()
 				local mapVisible = ZO_WorldMap and not ZO_WorldMap:IsHidden()
 				if mapVisible and not self.dormant and self.account and self.account.hideMapLabels then
-					self:HidePinLabels()
-					self:HideMapAreaLabels()
+					self:SweepMapLabelsIfDue()
 				end
 				self:UpdateZoneTitle()
 			end

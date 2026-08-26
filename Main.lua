@@ -415,6 +415,9 @@ function addon:SetDormant(value)
 		if self.ApplyLiteAlpha then
 			self:ApplyLiteAlpha()
 		end
+		if self.ApplyLiteBorder then
+			self:ApplyLiteBorder()
+		end
 		if self.UpdateZoneTitle then
 			self:UpdateZoneTitle()
 		end
@@ -446,6 +449,9 @@ function addon:SetDormant(value)
 		end
 		if self.ApplyLiteAlpha then
 			self:ApplyLiteAlpha()
+		end
+		if self.ApplyLiteBorder then
+			self:ApplyLiteBorder()
 		end
 		-- Labels built while the full map was open are still on the map, and the name of
 		-- whatever was last focused there lingers too. Clear both on the way back.
@@ -2296,6 +2302,7 @@ function addon:Initialize()
 		followPlayer = true,
 		liteAlpha = 100,
 		hideMapLabels = true,
+		showBorder = true,
 		showZoneTitle = true,
 		zoneTitleSize = 24,
 		-- Scale relative to the map's native resolution, same meaning as the original's zoom
@@ -2552,6 +2559,32 @@ function addon:Initialize()
 
 		if zo_abs((ZO_WorldMap:GetAlpha() or 1) - wantAlpha) > 0.005 then
 			ZO_WorldMap:SetAlpha(wantAlpha)
+		end
+	end
+
+	-- Border.
+	--
+	-- ZO_WorldMapMapFrame is the game's own frame around the map. Hiding it leaves the map
+	-- itself untouched, so the minimap becomes a plain rectangle of map.
+	--
+	-- Shared with the standard map, so the frame is put back the moment that comes forward --
+	-- the same arrangement as size, position, opacity and pan-past-edge.
+	function addon:ApplyLiteBorder()
+		if not ZO_WorldMapMapFrame then
+			return
+		end
+		local account = self.account
+		if not account then
+			return
+		end
+
+		local wantHidden = false
+		if not self.dormant and (self.initLevel or 0) < 3 and account.enableMap then
+			wantHidden = not account.showBorder
+		end
+
+		if ZO_WorldMapMapFrame:IsHidden() ~= wantHidden then
+			ZO_WorldMapMapFrame:SetHidden(wantHidden)
 		end
 	end
 
@@ -3235,6 +3268,7 @@ function addon:Initialize()
 			function()
 				self:MaintainLiteMinimapLayout()
 				self:ApplyLiteAlpha()
+				self:ApplyLiteBorder()
 				if not self.dormant and self.account and self.account.hideMapLabels then
 					self:HidePinLabels()
 					self:HideMapAreaLabels()

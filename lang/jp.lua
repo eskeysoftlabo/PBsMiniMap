@@ -136,6 +136,8 @@ local strings = {
 	SI_PBSMINIMAP_LITE_ZONE_TITLE_TOOLTIP = "現在いるエリアの名前を、ミニマップのすぐ上に表示します。",
 	SI_PBSMINIMAP_LITE_ZONE_TITLE_SIZE = "エリア名の文字サイズ",
 	SI_PBSMINIMAP_LITE_ZONE_TITLE_SIZE_TOOLTIP = "ミニマップ上部に表示するエリア名の文字サイズです。",
+	SI_PBSMINIMAP_LITE_BORDER = "枠線を表示",
+	SI_PBSMINIMAP_LITE_BORDER_TOOLTIP = "ミニマップの周囲に地図の枠を描画します。オフにすると枠のない地図だけの表示になります。通常のマップの枠には影響しません。",
 }
 
 for stringId, stringValue in pairs(strings) do

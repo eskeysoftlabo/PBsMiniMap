@@ -151,66 +151,6 @@ function addon:InitSettings()
 			end
 		}
 	)
-	-- Diagnostic bisection switch for the console memory crash. See initLevel in Main.lua.
-	settings:AddSetting(
-		{
-			type = LibHarvensAddonSettings.ST_SLIDER,
-			label = GetString(SI_PBSMINIMAP_DEBUG_INIT_LEVEL),
-			tooltip = GetString(SI_PBSMINIMAP_DEBUG_INIT_LEVEL_TOOLTIP),
-			min = 0,
-			max = 4,
-			step = 1,
-			default = self.accountDefaults.initLevel,
-			format = "%d",
-			unit = "",
-			getFunction = function()
-				return self.account.initLevel or 4
-			end,
-			setFunction = function(value)
-				self.account.initLevel = value
-			end,
-			disable = true
-		}
-	)
-	settings:AddSetting(
-		{
-			type = LibHarvensAddonSettings.ST_SLIDER,
-			label = GetString(SI_PBSMINIMAP_DEBUG_MINIMAP_PART),
-			tooltip = GetString(SI_PBSMINIMAP_DEBUG_MINIMAP_PART_TOOLTIP),
-			min = 0,
-			max = 3,
-			step = 1,
-			default = self.accountDefaults.miniPart,
-			format = "%d",
-			unit = "",
-			getFunction = function()
-				return self.account.miniPart or 3
-			end,
-			setFunction = function(value)
-				self.account.miniPart = value
-			end,
-			disable = true
-		}
-	)
-	settings:AddSetting(
-		{
-			type = LibHarvensAddonSettings.ST_CHECKBOX,
-			label = GetString(SI_PBSMINIMAP_DEBUG_LOG),
-			tooltip = GetString(SI_PBSMINIMAP_DEBUG_LOG_TOOLTIP),
-			default = self.accountDefaults.debug,
-			getFunction = function()
-				return self.account.debug
-			end,
-			setFunction = function(value)
-				self.account.debug = value
-				-- Print the pan/zoom API right away, so it can be read without a reload.
-				if value and self.DumpPanZoomApi then
-					self:DumpPanZoomApi()
-				end
-			end,
-			disable = true
-		}
-	)
 	settings:AddSetting(
 		{
 			type = LibHarvensAddonSettings.ST_LABEL,
@@ -410,6 +350,21 @@ function addon:InitSettings()
 				setFunction = function(value)
 					self.account.liteAlpha = value
 					self:ApplyLiteAlpha()
+				end
+			}
+		)
+		settings:AddSetting(
+			{
+				type = LibHarvensAddonSettings.ST_CHECKBOX,
+				label = GetString(SI_PBSMINIMAP_LITE_BORDER),
+				tooltip = GetString(SI_PBSMINIMAP_LITE_BORDER_TOOLTIP),
+				default = self.accountDefaults.showBorder,
+				getFunction = function()
+					return self.account.showBorder
+				end,
+				setFunction = function(value)
+					self.account.showBorder = value
+					self:ApplyLiteBorder()
 				end
 			}
 		)
@@ -1419,4 +1374,65 @@ function addon:InitSettings()
 			}
 		)
 	end
+
+	-- Diagnostics last: locked, and of no use in normal play.
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_SLIDER,
+			label = GetString(SI_PBSMINIMAP_DEBUG_INIT_LEVEL),
+			tooltip = GetString(SI_PBSMINIMAP_DEBUG_INIT_LEVEL_TOOLTIP),
+			min = 0,
+			max = 4,
+			step = 1,
+			default = self.accountDefaults.initLevel,
+			format = "%d",
+			unit = "",
+			getFunction = function()
+				return self.account.initLevel or 4
+			end,
+			setFunction = function(value)
+				self.account.initLevel = value
+			end,
+			disable = true
+		}
+	)
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_SLIDER,
+			label = GetString(SI_PBSMINIMAP_DEBUG_MINIMAP_PART),
+			tooltip = GetString(SI_PBSMINIMAP_DEBUG_MINIMAP_PART_TOOLTIP),
+			min = 0,
+			max = 3,
+			step = 1,
+			default = self.accountDefaults.miniPart,
+			format = "%d",
+			unit = "",
+			getFunction = function()
+				return self.account.miniPart or 3
+			end,
+			setFunction = function(value)
+				self.account.miniPart = value
+			end,
+			disable = true
+		}
+	)
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_CHECKBOX,
+			label = GetString(SI_PBSMINIMAP_DEBUG_LOG),
+			tooltip = GetString(SI_PBSMINIMAP_DEBUG_LOG_TOOLTIP),
+			default = self.accountDefaults.debug,
+			getFunction = function()
+				return self.account.debug
+			end,
+			setFunction = function(value)
+				self.account.debug = value
+				-- Print the pan/zoom API right away, so it can be read without a reload.
+				if value and self.DumpPanZoomApi then
+					self:DumpPanZoomApi()
+				end
+			end,
+			disable = true
+		}
+	)
 end

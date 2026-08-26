@@ -136,6 +136,8 @@ local strings = {
 	SI_PBSMINIMAP_LITE_ZONE_TITLE_TOOLTIP = "Show the name of the area you are in, just above the minimap.",
 	SI_PBSMINIMAP_LITE_ZONE_TITLE_SIZE = "Zone name size",
 	SI_PBSMINIMAP_LITE_ZONE_TITLE_SIZE_TOOLTIP = "Text size of the zone name above the minimap.",
+	SI_PBSMINIMAP_LITE_BORDER = "Show border",
+	SI_PBSMINIMAP_LITE_BORDER_TOOLTIP = "Draw the map's frame around the minimap. Turn it off for a plain rectangle of map. The full map keeps its frame either way.",
 }
 
 for stringId, stringValue in pairs(strings) do

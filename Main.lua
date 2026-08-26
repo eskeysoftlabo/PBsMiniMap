@@ -2888,11 +2888,18 @@ function addon:Initialize()
 		-- native comes out below fit, the interpolation runs backwards, and turning the
 		-- setting up zoomed OUT instead of in.
 		--
-		-- Clamping the upper end to at least a few times fit keeps the relationship the right
-		-- way round everywhere -- larger always means more magnified -- and leaves the zone
-		-- maps behaving exactly as before, since native is far above fit there.
-		local upper = zo_max(native, r * 3)
-		local maxZoom = math.floor((upper - r) * 500 * targetScale) / 500 + r
+		-- Interpolating from fit also means fit is the floor: no setting, however low, can
+		-- show more of the map than exactly fills the window. Indoors that is still too close.
+		--
+		-- So the setting is a plain multiplier on the reference zoom instead. 1.0 draws the
+		-- map at that reference, lower draws it smaller -- below fit if asked, with empty
+		-- space around it -- and higher magnifies. Monotonic everywhere, and nothing special
+		-- happens at the fit boundary.
+		local reference = zo_max(native, r * 3)
+		local maxZoom = math.floor(reference * targetScale * 500) / 500
+		if maxZoom < 0.01 then
+			maxZoom = 0.01
+		end
 
 		-- The lower bound has to be allowed below ComputeMinZoom().
 		--

@@ -491,10 +491,12 @@ function addon:SetDormant(value)
 		end
 	else
 		if self.SetMinimapAttached and self.account and self.account.enableMap then
-			self:SetMinimapAttached(true)
 			-- Opening the standard map lets the game resize ZO_WorldMap to full screen, so the
-			-- lite layout has to be re-applied every time we come back to the HUD.
-			if (self.initLevel or 0) < 3 and self.ApplyLiteMinimapLayout then
+			-- lite layout has to be re-applied every time we come back to the HUD. Attaching
+			-- does that itself; only cover the case where it was already attached, so the
+			-- window is not put through a second resize for nothing.
+			local attachedNow = self:SetMinimapAttached(true)
+			if not attachedNow and (self.initLevel or 0) < 3 and self.ApplyLiteMinimapLayout then
 				self:ApplyLiteMinimapLayout()
 			end
 		end
@@ -3471,9 +3473,11 @@ function addon:Initialize()
 
 	local minimapAttached = false
 	local orgFragmentDuration = WORLD_MAP_FRAGMENT and WORLD_MAP_FRAGMENT.duration
+	-- Returns true when the state actually changed, which also means the layout has just been
+	-- applied as part of it.
 	function addon:SetMinimapAttached(attached)
 		if minimapAttached == attached then
-			return
+			return false
 		end
 		minimapAttached = attached
 		self.minimapAttached = attached
@@ -3487,6 +3491,22 @@ function addon:Initialize()
 			-- to respond. The original sets this to 0 for the same reason; that lives in
 			-- InitMiniMap, which this path skips.
 			WORLD_MAP_FRAGMENT.duration = 0
+
+			-- Lay the window out BEFORE putting the fragment back in the HUD scenes.
+			--
+			-- Doing it afterwards left a frame or two where the map was already on screen but
+			-- still at the full map's size and position -- visible as a flash when a scene
+			-- hands back to the HUD, most obviously in the moment between choosing a
+			-- fast-travel destination and the loading screen appearing.
+			--
+			-- The geometry can be set while the fragment is detached; it does not need to be
+			-- in a scene to be sized.
+			--
+			-- Only the lite path needs this; at higher init levels InitMiniMap owns layout.
+			if (self.initLevel or 0) < 3 then
+				self:ApplyLiteMinimapLayout()
+			end
+
 			HUD_UI_SCENE:RemoveFragment(MOUSE_UI_MODE_FRAGMENT)
 			HUD_SCENE:AddFragment(WORLD_MAP_FRAGMENT)
 			HUD_UI_SCENE:AddFragment(WORLD_MAP_FRAGMENT)
@@ -3494,10 +3514,6 @@ function addon:Initialize()
 			SIEGE_BAR_UI_SCENE:AddFragment(WORLD_MAP_FRAGMENT)
 			LOOT_SCENE:AddFragment(WORLD_MAP_FRAGMENT)
 			HUD_UI_SCENE:AddFragment(MOUSE_UI_MODE_FRAGMENT)
-			-- Only the lite path needs this; at higher init levels InitMiniMap owns layout.
-			if (self.initLevel or 0) < 3 then
-				self:ApplyLiteMinimapLayout()
-			end
 		else
 			if orgFragmentDuration then
 				WORLD_MAP_FRAGMENT.duration = orgFragmentDuration
@@ -3508,6 +3524,7 @@ function addon:Initialize()
 			SIEGE_BAR_UI_SCENE:RemoveFragment(WORLD_MAP_FRAGMENT)
 			LOOT_SCENE:RemoveFragment(WORLD_MAP_FRAGMENT)
 		end
+		return true
 	end
 
 	-- The "World Map Tweaks" replace the game's POI / wayshrine / map-location / custom-pin

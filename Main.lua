@@ -1272,8 +1272,22 @@ function addon:InitMiniMap()
 	local MoveToPlayer = ZO_WorldMap_PanToPlayer
 	local function AdjustZoom()
 		local x, y = GetMapPlayerPosition("player")
+		-- Do not compute from tile data that is not there yet.
+		--
+		-- Crossing between a city and the open world, the tile count can already be the new
+		-- map's while the container still holds the old texture, or none at all. The old code
+		-- substituted a width of 1 in that case, which is not a fallback so much as a made-up
+		-- number: it produced a wildly wrong zoom, and since the verification added later only
+		-- checks that the applied range matches what was computed, a value computed from
+		-- nothing was then held in place. That is the field map coming out hugely magnified
+		-- after leaving Elden Root.
+		--
+		-- Nothing is cached on this path, so the next tick simply tries again.
 		local numTiles = GetMapNumTiles()
-		local tilePixelWidth = ZO_WorldMapContainer1 and ZO_WorldMapContainer1:GetTextureFileDimensions() or 1
+		local tilePixelWidth = ZO_WorldMapContainer1 and ZO_WorldMapContainer1:GetTextureFileDimensions()
+		if not numTiles or numTiles < 1 or not tilePixelWidth or tilePixelWidth < 2 then
+			return false
+		end
 		local totalPixels = numTiles * tilePixelWidth
 		local w, h = ZO_WorldMapScroll:GetDimensions()
 		w, h = zo_round(w), zo_round(h)

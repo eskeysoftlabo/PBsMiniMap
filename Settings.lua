@@ -151,17 +151,13 @@ function addon:InitSettings()
 			end
 		}
 	)
-	settings:AddSetting(
-		{
-			type = LibHarvensAddonSettings.ST_LABEL,
-			label = ""
-		}
-	)
+	-- A button row still needs a label: the row text is what the panel draws, and with an
+	-- empty one the entry came out blank. The empty spacer above it was the visible gap.
 	settings:AddSetting(
 		{
 			type = LibHarvensAddonSettings.ST_BUTTON,
-			label = "",
-			tooltip = nil,
+			label = GetString(SI_PBSMINIMAP_APPLY_LABEL),
+			tooltip = GetString(SI_PBSMINIMAP_APPLY_TOOLTIP),
 			buttonText = GetString(SI_PBSMINIMAP_APPLY_BUTTON),
 			clickHandler = function()
 				SLASH_COMMANDS["/reloadui"]()
@@ -497,7 +493,7 @@ function addon:InitSettings()
 		settings:AddSetting(
 			{
 				type = LibHarvensAddonSettings.ST_BUTTON,
-				label = "",
+				label = GetString(SI_PBSMINIMAP_LITE_REAPPLY),
 				tooltip = GetString(SI_PBSMINIMAP_LITE_REAPPLY_TOOLTIP),
 				buttonText = GetString(SI_PBSMINIMAP_LITE_REAPPLY),
 				clickHandler = applyLayout

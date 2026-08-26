@@ -2915,12 +2915,42 @@ function addon:Initialize()
 			minZoom = maxZoom
 		end
 
-		if lastMaxZoom == maxZoom and lastZoomW == w and lastZoomH == h and lastZoomContext == context then
+		-- Check what the range actually is, not just whether our inputs changed.
+		--
+		-- Caching on the inputs alone meant that when the game reset the zoom range on its own
+		-- -- which it does on map refreshes -- nothing here noticed, because the setting, the
+		-- window size and the map context were all still the same. The zoom then quietly
+		-- reverted and stayed reverted. Same mistake as the layout maintenance made earlier:
+		-- assuming an applied value stayed applied.
+		local inputsUnchanged = lastMaxZoom == maxZoom and lastZoomW == w and lastZoomH == h and lastZoomContext == context
+		-- Without a getter there is nothing to verify against, so fall back to trusting the
+		-- cache rather than re-applying on every tick.
+		local applied = panZoom.GetZoomMinMax == nil
+		if inputsUnchanged and panZoom.GetZoomMinMax then
+			local currentMin, currentMax = panZoom:GetZoomMinMax()
+			applied = currentMax ~= nil and zo_abs(currentMax - maxZoom) <= 0.005 and
+				(currentMin == nil or zo_abs(currentMin - minZoom) <= 0.005)
+		end
+
+		if inputsUnchanged and applied then
 			return false
 		end
 		lastMaxZoom, lastZoomW, lastZoomH, lastZoomContext = maxZoom, w, h, context
 
 		panZoom:SetMapZoomMinMax(minZoom, maxZoom)
+
+		-- Sit at the top of the range: maxZoom is the zoom that was asked for. If the game has
+		-- moved the normalized position off maximum, the range alone will not restore the view.
+		if panZoom.GetCurrentNormalizedZoom then
+			local normalized = panZoom:GetCurrentNormalizedZoom()
+			if normalized and normalized < 0.995 then
+				if panZoom.SetCurrentNormalizedZoomInternal then
+					panZoom:SetCurrentNormalizedZoomInternal(1)
+				elseif panZoom.SetCurrentNormalizedZoom then
+					panZoom:SetCurrentNormalizedZoom(1)
+				end
+			end
+		end
 		return true
 	end
 

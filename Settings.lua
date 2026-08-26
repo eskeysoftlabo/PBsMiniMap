@@ -110,11 +110,51 @@ function addon:InitSettings()
 
 	-- Credit to the add-on this one is based on, kept out of the author field so that stays
 	-- the actual author of this version.
-	settings:AddSetting(
+	local creditSetting =
+		settings:AddSetting(
 		{
 			type = LibHarvensAddonSettings.ST_LABEL,
 			label = GetString(SI_PBSMINIMAP_CREDIT)
 		}
+	)
+
+	-- Set a size on the credit line rather than a font.
+	--
+	-- The panel's rows are built by the settings library and only exist once the panel has
+	-- been opened, so this runs on selection rather than now. Taking the size out of whatever
+	-- font is already there keeps the platform's own face and styling: on console that is a
+	-- gamepad font, on PC it is not, and hardcoding either would look wrong somewhere.
+	local creditResized = false
+	local function ShrinkCreditLine()
+		if creditResized or not creditSetting then
+			return
+		end
+		local control = creditSetting.control
+		local label = control and (control.label or (control.GetNamedChild and control:GetNamedChild("Label")))
+		if not label or not label.GetFont or not label.SetFont then
+			return
+		end
+		local font = label:GetFont()
+		if not font then
+			return
+		end
+		-- "face|size|style" - scale only the middle field, and only once.
+		local scaled, replacements =
+			font:gsub("|(%d+)", function(size)
+				return "|" .. tostring(math.max(10, math.floor(tonumber(size) * 0.8)))
+			end, 1)
+		if replacements > 0 then
+			label:SetFont(scaled)
+			creditResized = true
+		end
+	end
+	CALLBACK_MANAGER:RegisterCallback(
+		"LibHarvensAddonSettings_AddonSelected",
+		function(_, addonSettings)
+			if addonSettings == settings then
+				ShrinkCreditLine()
+			end
+		end
 	)
 
 	-- World Map Tweaks is dead weight on console: Initialize() forces enableTweaks off there,

@@ -3300,6 +3300,7 @@ function addon:Initialize()
 	end
 
 	local minimapAttached = false
+	local orgFragmentDuration = WORLD_MAP_FRAGMENT and WORLD_MAP_FRAGMENT.duration
 	function addon:SetMinimapAttached(attached)
 		if minimapAttached == attached then
 			return
@@ -3308,6 +3309,14 @@ function addon:Initialize()
 		self.minimapAttached = attached
 
 		if attached then
+			-- No fade on the fragment.
+			--
+			-- The map fragment lives in the HUD scenes, so it is shown and hidden on every
+			-- scene change -- opening inventory, looting, and so on. Left at its default
+			-- duration each of those carries an animation, which is felt as the UI being slow
+			-- to respond. The original sets this to 0 for the same reason; that lives in
+			-- InitMiniMap, which this path skips.
+			WORLD_MAP_FRAGMENT.duration = 0
 			HUD_UI_SCENE:RemoveFragment(MOUSE_UI_MODE_FRAGMENT)
 			HUD_SCENE:AddFragment(WORLD_MAP_FRAGMENT)
 			HUD_UI_SCENE:AddFragment(WORLD_MAP_FRAGMENT)
@@ -3320,6 +3329,9 @@ function addon:Initialize()
 				self:ApplyLiteMinimapLayout()
 			end
 		else
+			if orgFragmentDuration then
+				WORLD_MAP_FRAGMENT.duration = orgFragmentDuration
+			end
 			HUD_SCENE:RemoveFragment(WORLD_MAP_FRAGMENT)
 			HUD_UI_SCENE:RemoveFragment(WORLD_MAP_FRAGMENT)
 			SIEGE_BAR_SCENE:RemoveFragment(WORLD_MAP_FRAGMENT)
@@ -3662,7 +3674,11 @@ local function InitMemoryWatchdog()
 	-- Runs every frame and is deliberately NOT suspended while the World Map is in front:
 	-- the moment being investigated is exactly the one that must stay visible.
 	function addon:RestartMemoryWatch()
-		EVENT_MANAGER:RegisterForUpdate(self.name .. "MemoryWatch", 0, Check)
+		-- 50ms rather than every frame. All this has to do in normal play is notice that the
+		-- standard map has come forward, and that happens long before the player can zoom out
+		-- to Tamriel -- but it runs behind every full-screen UI in the game, so the frequency
+		-- is worth something.
+		EVENT_MANAGER:RegisterForUpdate(self.name .. "MemoryWatch", 50, Check)
 	end
 	addon:RestartMemoryWatch()
 

@@ -2811,7 +2811,7 @@ function addon:Initialize()
 	-- should be for this window from the map's real tile resolution, installs it with
 	-- SetMapZoomMinMax, and leaves the normalized zoom at maximum. The setting is therefore a
 	-- scale relative to the map's native resolution, not a 0..1 position. Same approach here.
-	local MIN_SCALE = 0.1
+	local MIN_SCALE = 0.05
 
 	local function CurrentZoomContext()
 		local contentType = GetMapContentType()
@@ -2881,12 +2881,26 @@ function addon:Initialize()
 		local r = zo_max(w, h) / mapAreaUIUnits
 		local maxZoom = math.floor((totalPixels / mapAreaPixels - r) * 500 * targetScale) / 500 + r
 
+		-- The lower bound has to be allowed below ComputeMinZoom().
+		--
+		-- That is the game's idea of the least zoom that still fills the window, and on the
+		-- small building and city maps it comes out higher than the zoom being asked for. The
+		-- range was then inverted, the zoom stuck to the floor, and turning the setting down
+		-- to 0.1 changed nothing -- which is exactly the reported symptom.
+		--
+		-- Taking the smaller of the two lets the map be drawn smaller than the window, with
+		-- empty space around it, which is the whole point of zooming out indoors.
+		local minZoom = panZoom:ComputeMinZoom()
+		if not minZoom or minZoom > maxZoom then
+			minZoom = maxZoom
+		end
+
 		if lastMaxZoom == maxZoom and lastZoomW == w and lastZoomH == h and lastZoomContext == context then
 			return false
 		end
 		lastMaxZoom, lastZoomW, lastZoomH, lastZoomContext = maxZoom, w, h, context
 
-		panZoom:SetMapZoomMinMax(panZoom:ComputeMinZoom(), maxZoom)
+		panZoom:SetMapZoomMinMax(minZoom, maxZoom)
 		return true
 	end
 

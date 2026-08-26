@@ -455,7 +455,7 @@ function addon:InitSettings()
 					tooltip = tooltip,
 					-- Scale relative to the map's native resolution, not a 0..1 position -- see
 					-- AdjustLiteZoom in Main.lua. Higher means more magnified.
-					min = 0.1,
+					min = 0.05,
 					max = 2,
 					step = 0.05,
 					default = self.accountDefaults[key],

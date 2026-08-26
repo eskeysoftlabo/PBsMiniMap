@@ -46,8 +46,14 @@ local function ReadManifestVersion()
 	for index = 1, manager:GetNumAddOns() do
 		local name, title = manager:GetAddOnInfo(index)
 		if name == addon.name and title then
+			-- Strip ESO's colour markup before reading the version.
+			--
+			-- "## Title:" accepts |cRRGGBB ... |r, and a title coloured as a whole ends in |r
+			-- rather than in the version, so an anchored match would find nothing and the
+			-- version would silently disappear from the settings panel.
+			local plain = title:gsub("|c%x%x%x%x%x%x", ""):gsub("|r", "")
 			-- Trailing "1", "1.0", "1.0.2", ...
-			return title:match("([%d]+[%d%.]*)%s*$") or ""
+			return plain:match("([%d]+[%d%.]*)%s*$") or ""
 		end
 	end
 	return ""

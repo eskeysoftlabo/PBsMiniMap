@@ -2636,7 +2636,15 @@ function addon:Initialize()
 	-- game re-anchored ZO_WorldMap without resizing it -- which is what happens on the way back
 	-- from the settings screen -- the size still matched, so the drift went unnoticed and the
 	-- window stayed at the old position.
-	local function LiteLayoutMatches(account)
+	-- Size and position are checked separately, because putting them right costs very
+	-- different amounts.
+	--
+	-- Re-applying the size runs ZO_WorldMap_OnResizeStart/Stop, which makes the map lay itself
+	-- out again. Re-applying the position is two calls and disturbs nothing. Coming back from
+	-- a full-screen scene it is usually only the position that has drifted, so treating that
+	-- as a full re-layout put a burst of map work right where the UI was trying to return --
+	-- felt as the inventory screen being slow to close.
+	local function LiteSizeMatches(account)
 		local wantW = account.width or 304
 		local wantH = account.height or 368
 		local haveW, haveH = ZO_WorldMap:GetDimensions()
@@ -2652,7 +2660,10 @@ function addon:Initialize()
 				return false
 			end
 		end
+		return true
+	end
 
+	local function LitePositionMatches(account)
 		local uiWidth, uiHeight = GuiRoot:GetDimensions()
 		local wantX = account.x or (uiWidth / 2 - 304)
 		local wantY = account.y or (uiHeight / 2 - 368)
@@ -2671,6 +2682,10 @@ function addon:Initialize()
 		return true
 	end
 
+	local function LiteLayoutMatches(account)
+		return LiteSizeMatches(account) and LitePositionMatches(account)
+	end
+
 	-- Exposed so the follow tick can ask "has it drifted?" without going through the
 	-- maintenance tick's backoff bookkeeping. Defined after LiteLayoutMatches so it captures
 	-- the local rather than a nil global.
@@ -2680,6 +2695,14 @@ function addon:Initialize()
 			return true
 		end
 		return LiteLayoutMatches(account)
+	end
+
+	function addon:IsLiteSizeCurrent()
+		local account = self.account
+		if not account or not ZO_WorldMap or ZO_WorldMap:IsHidden() then
+			return true
+		end
+		return LiteSizeMatches(account)
 	end
 
 	function addon:MaintainLiteMinimapLayout()
@@ -2695,6 +2718,14 @@ function addon:Initialize()
 			failedAttempts = 0
 			return
 		end
+
+		-- Position-only drift takes the cheap path: no resize, so no map re-layout.
+		if LiteSizeMatches(account) then
+			failedAttempts = 0
+			self:ApplyLiteAnchorOnly()
+			return
+		end
+
 		if failedAttempts >= 5 then
 			return
 		end
@@ -3064,12 +3095,17 @@ function addon:Initialize()
 			disturbed = true
 		end
 
-		-- 3. Restore our size and position. Only touches anything when it has actually
-		-- drifted, but when it does it also resets the pan, so remember to re-centre.
+		-- 3. Restore our size and position, cheapest route first. Position-only drift is put
+		-- right with two anchor calls and disturbs nothing; a size change means a real
+		-- re-layout, which also throws the pan away, so that one has to be re-centred after.
 		self:ResetLiteLayoutBackoff()
 		if not self:IsLiteLayoutCurrent() then
-			self:ApplyLiteMinimapLayout()
-			disturbed = true
+			if self:IsLiteSizeCurrent() then
+				self:ApplyLiteAnchorOnly()
+			else
+				self:ApplyLiteMinimapLayout()
+				disturbed = true
+			end
 		end
 
 		-- 4. Centre on the player. Done whenever they moved, and also whenever anything above

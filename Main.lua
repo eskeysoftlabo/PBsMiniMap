@@ -381,10 +381,42 @@ function addon:SetAllowPanPastMapEdge(allow)
 	end
 end
 
+-- Some of these hooks only ever do anything in this add-on's own map mode, which the lite
+-- configuration never enters. They sit at file scope, so they were being installed at load
+-- whatever the settings said, and every call the game made to the wrapped function went
+-- through a Lua closure to reach the pass-through branch.
+--
+-- ZO_KeybindStripGamepadBackgroundTexture:GetHeight is the one that stings: on console the
+-- keybind strip is on screen for practically every menu, so its layout queries were all
+-- routed through us for no benefit at all.
+--
+-- Registering them deferred keeps the definitions where they are but leaves them uninstalled
+-- until InitMiniMap asks for them.
+local pendingHooks = {}
+local function HookHotPathDeferred(container, key, addonImpl)
+	local vanilla = container[key]
+	local hook = {container = container, key = key, addonImpl = addonImpl, vanilla = vanilla, pending = true}
+	hotPathHooks[#hotPathHooks + 1] = hook
+	pendingHooks[#pendingHooks + 1] = hook
+	return vanilla
+end
+
+function addon:InstallDeferredHotPathHooks()
+	for i = 1, #pendingHooks do
+		local hook = pendingHooks[i]
+		hook.pending = nil
+		hook.container[hook.key] = hook.addonImpl
+	end
+	pendingHooks = {}
+end
+
 function addon:SetHotPathHooksActive(active)
 	for i = 1, #hotPathHooks do
 		local hook = hotPathHooks[i]
-		hook.container[hook.key] = active and hook.addonImpl or hook.vanilla
+		-- Never install a hook that was deferred and not asked for.
+		if not hook.pending then
+			hook.container[hook.key] = active and hook.addonImpl or hook.vanilla
+		end
 	end
 end
 
@@ -1074,6 +1106,9 @@ function addon:InitCameraAngle()
 end
 
 function addon:InitMiniMap()
+	-- The map-mode hooks defined at file scope are only meaningful from here on.
+	self:InstallDeferredHotPathHooks()
+
 	-- Second bisection axis, used once initLevel reached 3 and narrowed the crash to this
 	-- function. Each step switches on one more of the permanent side effects this function
 	-- has on the game's World Map, in rough order of how much of the game they touch:
@@ -2164,7 +2199,7 @@ do
 	-- layout while the map is on screen. Registered as swappable so dormancy hands them back.
 	local orgGetLeft
 	orgGetLeft =
-		HookHotPath(
+		HookHotPathDeferred(
 		GAMEPAD_WORLD_MAP_TOOLTIP_FRAGMENT.control,
 		"GetLeft",
 		function(control)
@@ -2181,7 +2216,7 @@ do
 
 	local orgGetHeight
 	orgGetHeight =
-		HookHotPath(
+		HookHotPathDeferred(
 		ZO_KeybindStripGamepadBackgroundTexture,
 		"GetHeight",
 		function(control)
@@ -2198,7 +2233,7 @@ do
 
 		local orgZO_MapPanAndZoomUpdate
 		orgZO_MapPanAndZoomUpdate =
-			HookHotPath(
+			HookHotPathDeferred(
 			ZO_MapPanAndZoom,
 			"Update",
 			function(...)
@@ -2211,7 +2246,7 @@ do
 
 		local orgZO_MapPanAndZoomSetCurrentZoom
 		orgZO_MapPanAndZoomSetCurrentZoom =
-			HookHotPath(
+			HookHotPathDeferred(
 			ZO_MapPanAndZoom,
 			"SetCurrentNormalizedZoom",
 			function(...)
@@ -2227,7 +2262,7 @@ do
 		-- add-on frame under every one of those refreshes on the standard map.
 		local orgZO_WorldMap_UpdateMap
 		orgZO_WorldMap_UpdateMap =
-			HookHotPath(
+			HookHotPathDeferred(
 			_G,
 			"ZO_WorldMap_UpdateMap",
 			function(...)
@@ -2245,7 +2280,7 @@ do
 
 		local orgUpdateFloorNav
 		orgUpdateFloorNav =
-			HookHotPath(
+			HookHotPathDeferred(
 			WORLD_MAP_MANAGER,
 			"UpdateFloorAndLevelNavigation",
 			function(manager, ...)

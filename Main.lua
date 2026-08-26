@@ -1294,22 +1294,8 @@ function addon:InitMiniMap()
 	local MoveToPlayer = ZO_WorldMap_PanToPlayer
 	local function AdjustZoom()
 		local x, y = GetMapPlayerPosition("player")
-		-- Do not compute from tile data that is not there yet.
-		--
-		-- Crossing between a city and the open world, the tile count can already be the new
-		-- map's while the container still holds the old texture, or none at all. The old code
-		-- substituted a width of 1 in that case, which is not a fallback so much as a made-up
-		-- number: it produced a wildly wrong zoom, and since the verification added later only
-		-- checks that the applied range matches what was computed, a value computed from
-		-- nothing was then held in place. That is the field map coming out hugely magnified
-		-- after leaving Elden Root.
-		--
-		-- Nothing is cached on this path, so the next tick simply tries again.
 		local numTiles = GetMapNumTiles()
-		local tilePixelWidth = ZO_WorldMapContainer1 and ZO_WorldMapContainer1:GetTextureFileDimensions()
-		if not numTiles or numTiles < 1 or not tilePixelWidth or tilePixelWidth < 2 then
-			return false
-		end
+		local tilePixelWidth = ZO_WorldMapContainer1 and ZO_WorldMapContainer1:GetTextureFileDimensions() or 1
 		local totalPixels = numTiles * tilePixelWidth
 		local w, h = ZO_WorldMapScroll:GetDimensions()
 		w, h = zo_round(w), zo_round(h)
@@ -2782,9 +2768,6 @@ function addon:Initialize()
 		lastPlayerX, lastPlayerY = -1, -1
 		lastMapTile = nil
 		lastContainerW, lastContainerH = -1, -1
-		if self.ResetLiteZoomState then
-			self:ResetLiteZoomState()
-		end
 	end
 
 	-- Crossing between a city and the open world does not always leave
@@ -2880,11 +2863,6 @@ function addon:Initialize()
 		return CurrentScale(self.account)
 	end
 
-	local lastMaxZoom, lastZoomW, lastZoomH, lastZoomContext = nil, -1, -1, nil
-	function addon:ResetLiteZoomState()
-		lastMaxZoom, lastZoomW, lastZoomH, lastZoomContext = nil, -1, -1, nil
-	end
-
 	-- Returns true when it changed the zoom range, i.e. when the pan needs re-centring.
 	function addon:AdjustLiteZoom()
 		local account = self.account
@@ -2900,11 +2878,21 @@ function addon:Initialize()
 			return false
 		end
 
-		local context = CurrentZoomContext()
 		local targetScale = CurrentScale(account)
 
+		-- Do not compute from tile data that is not there yet.
+		--
+		-- Crossing between a city and the open world, the tile count can already be the new
+		-- map's while the container still holds the old texture, or none at all. Substituting
+		-- a tile width of 1 there is not a fallback so much as a made-up number: it produces a
+		-- wildly wrong zoom, which then gets installed and defended.
+		--
+		-- Nothing is remembered on this path, so the next tick simply tries again.
 		local numTiles = GetMapNumTiles()
-		local tilePixelWidth = ZO_WorldMapContainer1 and ZO_WorldMapContainer1:GetTextureFileDimensions() or 1
+		local tilePixelWidth = ZO_WorldMapContainer1 and ZO_WorldMapContainer1:GetTextureFileDimensions()
+		if not numTiles or numTiles < 1 or not tilePixelWidth or tilePixelWidth < 2 then
+			return false
+		end
 		local totalPixels = numTiles * tilePixelWidth
 		local mapAreaPixels = mapAreaUIUnits * GetUIGlobalScale()
 		if mapAreaPixels < 1 then
@@ -2948,27 +2936,25 @@ function addon:Initialize()
 			minZoom = maxZoom
 		end
 
-		-- Check what the range actually is, not just whether our inputs changed.
+		-- No cache on the inputs. Recompute every tick and compare against what is installed.
 		--
-		-- Caching on the inputs alone meant that when the game reset the zoom range on its own
-		-- -- which it does on map refreshes -- nothing here noticed, because the setting, the
-		-- window size and the map context were all still the same. The zoom then quietly
-		-- reverted and stayed reverted. Same mistake as the layout maintenance made earlier:
-		-- assuming an applied value stayed applied.
-		local inputsUnchanged = lastMaxZoom == maxZoom and lastZoomW == w and lastZoomH == h and lastZoomContext == context
-		-- Without a getter there is nothing to verify against, so fall back to trusting the
-		-- cache rather than re-applying on every tick.
-		local applied = panZoom.GetZoomMinMax == nil
-		if inputsUnchanged and panZoom.GetZoomMinMax then
-			local currentMin, currentMax = panZoom:GetZoomMinMax()
-			applied = currentMax ~= nil and zo_abs(currentMax - maxZoom) <= 0.005 and
-				(currentMin == nil or zo_abs(currentMin - minZoom) <= 0.005)
+		-- Caching on the inputs had a hole that survived two attempts to close it. The
+		-- verification added earlier only asks "is the range I computed still installed?", so
+		-- a value computed from inputs that were valid but stale -- the new map's tile count
+		-- with the old map's texture width, or GetMapType() not yet switched over on a
+		-- city/field boundary -- was cached and then defended indefinitely. Nothing changed
+		-- afterwards to invalidate it, which is why waiting did not help.
+		--
+		-- Recomputing costs a handful of cheap API calls at 10Hz and removes the failure mode
+		-- entirely: the moment any input settles, the computed value changes and is applied.
+		local installedMin, installedMax
+		if panZoom.GetZoomMinMax then
+			installedMin, installedMax = panZoom:GetZoomMinMax()
 		end
-
-		if inputsUnchanged and applied then
+		if installedMax and zo_abs(installedMax - maxZoom) <= 0.005 and
+			(installedMin == nil or zo_abs(installedMin - minZoom) <= 0.005) then
 			return false
 		end
-		lastMaxZoom, lastZoomW, lastZoomH, lastZoomContext = maxZoom, w, h, context
 
 		panZoom:SetMapZoomMinMax(minZoom, maxZoom)
 
@@ -3171,7 +3157,6 @@ function addon:Initialize()
 			-- The map changed underneath us: the zoom range was computed for the old one.
 			lastMapTile = mapTile
 			lastPlayerX, lastPlayerY = -1, -1
-			self:ResetLiteZoomState()
 			disturbed = true
 		end
 
@@ -3180,7 +3165,6 @@ function addon:Initialize()
 			ApplyMapToPlayer()
 			lastMapTile = GetMapTileTexture()
 			lastPlayerX, lastPlayerY = -1, -1
-			self:ResetLiteZoomState()
 			disturbed = true
 		end
 

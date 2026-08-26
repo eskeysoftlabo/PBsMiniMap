@@ -3832,7 +3832,6 @@ local function OnAddonLoaded(event, name)
 	addon:Initialize()
 	addon:InitSettings()
 	InitMemoryWatchdog()
-	-- addon:InitPinLevels()
 end
 
 em:RegisterForEvent(addon.name, EVENT_ADD_ON_LOADED, OnAddonLoaded)

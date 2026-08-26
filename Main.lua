@@ -2878,8 +2878,21 @@ function addon:Initialize()
 			mapAreaPixels = 1
 		end
 
+		-- r is the fit zoom: 1 for a square window, a little over 1 to compensate for a
+		-- non-square one. native is the zoom that would show the map at its own resolution.
 		local r = zo_max(w, h) / mapAreaUIUnits
-		local maxZoom = math.floor((totalPixels / mapAreaPixels - r) * 500 * targetScale) / 500 + r
+		local native = totalPixels / mapAreaPixels
+
+		-- The original interpolates between fit and native, which assumes the map texture is
+		-- higher resolution than the window. On the small building and city maps it is not:
+		-- native comes out below fit, the interpolation runs backwards, and turning the
+		-- setting up zoomed OUT instead of in.
+		--
+		-- Clamping the upper end to at least a few times fit keeps the relationship the right
+		-- way round everywhere -- larger always means more magnified -- and leaves the zone
+		-- maps behaving exactly as before, since native is far above fit there.
+		local upper = zo_max(native, r * 3)
+		local maxZoom = math.floor((upper - r) * 500 * targetScale) / 500 + r
 
 		-- The lower bound has to be allowed below ComputeMinZoom().
 		--

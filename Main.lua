@@ -2634,6 +2634,8 @@ function addon:Initialize()
 		local uiWidth, uiHeight = GuiRoot:GetDimensions()
 		local wantW = account.width or 304
 		local wantH = account.height or 368
+		local wantX = account.x or (uiWidth / 2 - 304)
+		local wantY = account.y or (uiHeight / 2 - 368)
 
 		-- Pin the size with the constraints rather than only setting it.
 		--
@@ -2653,15 +2655,24 @@ function addon:Initialize()
 
 		ZO_WorldMap:ClearAnchors()
 		ZO_WorldMap:SetDimensionConstraints(wantW, wantH, wantW, wantH)
-		ZO_WorldMap:SetAnchor(CENTER, nil, CENTER, account.x or (uiWidth / 2 - 304), account.y or (uiHeight / 2 - 368))
+		ZO_WorldMap:SetAnchor(CENTER, nil, CENTER, wantX, wantY)
 		ZO_WorldMap:SetDimensions(wantW, wantH)
 
 		if ZO_WorldMap_OnResizeStop then
 			ZO_WorldMap_OnResizeStop(ZO_WorldMap)
 		end
 
-		-- Outer window: pinned with min == max, so nothing the game does can resize it.
+		-- Outer window: size and position both asserted again, and pinned with min == max so
+		-- nothing the game does can resize it.
+		--
+		-- The position has to be put back here too. ZO_WorldMap_OnResizeStop restores what the
+		-- *current* map mode holds, and that is a position as well as a size -- on this path,
+		-- the standard map's. Only the size was being re-asserted, so the window came up
+		-- correctly sized at the full map's position and was moved into place a tick later by
+		-- the layout watch: the minimap appearing in the wrong spot and then jumping to its own.
+		ZO_WorldMap:ClearAnchors()
 		ZO_WorldMap:SetDimensionConstraints(wantW, wantH, wantW, wantH)
+		ZO_WorldMap:SetAnchor(CENTER, nil, CENTER, wantX, wantY)
 		ZO_WorldMap:SetDimensions(wantW, wantH)
 
 		-- Scroll viewport: pinned as well.

@@ -2756,7 +2756,12 @@ function addon:Initialize()
 			wantAlpha = (account.liteAlpha or 100) / 100
 			-- Held transparent until the window is the shape it is supposed to be. The 200ms
 			-- watch calls this too, so the gate has to live here rather than at the call site.
-			if (self.settleTicks or 0) > 0 then
+			--
+			-- Not every settle hides the window. A map change runs the same phases while the
+			-- minimap stays on screen: the window keeps its size and place across the change,
+			-- so there is nothing misplaced to hide, and blanking it every time the player
+			-- crosses a city boundary would be worse than the moment of settling it covers.
+			if (self.settleTicks or 0) > 0 and not self.settleVisible then
 				wantAlpha = 0
 			end
 		end
@@ -2777,7 +2782,9 @@ function addon:Initialize()
 	-- Rather than a fourth guess at which call to pre-empt, the window is simply held
 	-- transparent until its geometry matches what was asked for. Whoever moves it and whenever
 	-- they do, the player does not see it happen.
-	function addon:BeginLiteSettle()
+	-- keepVisible: run the phases without hiding the window. Used for map changes, where the
+	-- window itself does not move and only what is drawn in it has to catch up.
+	function addon:BeginLiteSettle(keepVisible)
 		if (self.initLevel or 0) >= 3 or not ZO_WorldMap then
 			return
 		end
@@ -2792,6 +2799,11 @@ function addon:Initialize()
 		-- has to finish within the two seconds the first one started.
 		if (self.settleTicks or 0) <= 0 then
 			self.settleTicks = 40
+			self.settleVisible = keepVisible and true or false
+		elseif not keepVisible then
+			-- A settle that has to hide the window outranks one that does not: whatever asked
+			-- for hiding has something it does not want seen.
+			self.settleVisible = false
 		end
 		self.settleRefreshed = false
 		self.settleReclamped = false
@@ -3112,7 +3124,7 @@ function addon:Initialize()
 			-- hold the window until the layout and zoom agree, refresh the tiles, hand the view
 			-- back to the game, and only then show it.
 			if addon.BeginLiteSettle and (addon.initLevel or 0) < 3 then
-				addon:BeginLiteSettle()
+				addon:BeginLiteSettle(true)
 			end
 		end
 		return result

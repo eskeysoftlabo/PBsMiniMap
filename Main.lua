@@ -2821,21 +2821,21 @@ function addon:Initialize()
 		end
 		self.settleTicks = remaining
 		if remaining == 0 then
-			-- One real map update before the map is shown again.
+			-- Plant the view before showing it.
 			--
-			-- Measurement ruled out everything else: coming back from a dig the computed zoom,
-			-- the installed range and the zoom actually drawn all agreed exactly with the
-			-- setting, and matched the values from a session where the picture was right. What
-			-- differed was the tile container, by a factor of ten at the same zoom -- the map
-			-- identity was the player's own, but the tiles were still the ones the dig view had
-			-- loaded. Opening and closing the standard map fixed it, and what that does is
-			-- force a full update.
+			-- The measured numbers said the zoom was right in every respect -- computed,
+			-- installed and drawn all read the same value the setting works out to, the same
+			-- value a correct session showed. What was actually wrong was where the view was
+			-- pointing, carried over from the map the game had just been showing. Seen on the
+			-- standard map it was plainly that: a view at a strange position that came right
+			-- as soon as the cursor moved and the game re-clamped it.
 			--
-			-- So do the same thing, once, at the end of the settle rather than leaving it to
-			-- the player. It has to be outside ApplyLiteMinimapLayout, which stubs this very
-			-- function out while it moves the window.
-			if ZO_WorldMap_UpdateMap then
-				ZO_WorldMap_UpdateMap()
+			-- Nothing re-clamps it for us here, so it is set outright rather than eased into.
+			if self.CentreOnPlayerHard then
+				local playerX, playerY = GetMapPlayerPosition("player")
+				if playerX and playerY then
+					self:CentreOnPlayerHard(playerX, playerY)
+				end
 			end
 			self:ApplyLiteAlpha()
 		end
@@ -3308,6 +3308,48 @@ function addon:Initialize()
 			ZO_WorldMap_JumpToPlayer()
 			route("ZO_WorldMap_JumpToPlayer")
 		end
+	end
+
+	-- Centring with no easing and no stale target left behind.
+	--
+	-- CentreOnPlayer prefers PanToNormalizedPosition, which sets a target and lets the game
+	-- ease towards it. That is right while walking, and wrong when standing back up: the view
+	-- can be left at an offset that belongs to the map the game was just showing, and easing
+	-- from there does not converge -- the minimap sits looking at the wrong place, which reads
+	-- as the wrong scale. Opening the standard map showed the same thing directly, a view at a
+	-- strange position that only came right once the cursor was moved and the game re-clamped
+	-- the offset.
+	--
+	-- Nothing is being clamped for us: the minimap runs with SetAllowPanPastMapEdge(true) so
+	-- the player can stay centred at a map's border, which also means an offset well outside
+	-- the map is never pulled back. So it is planted outright instead, at the offset computed
+	-- for the player's own position on the map that is loaded now.
+	function addon:CentreOnPlayerHard(normalizedX, normalizedY)
+		local panZoom = self.panZoom
+		if not panZoom then
+			return false
+		end
+
+		if panZoom.GetNormalizedPositionFocusZoomAndOffset and panZoom.SetCurrentOffset then
+			local _, offsetX, offsetY = panZoom:GetNormalizedPositionFocusZoomAndOffset(normalizedX, normalizedY)
+			if offsetX and offsetY then
+				if panZoom.ClearTargetOffset then
+					panZoom:ClearTargetOffset()
+				end
+				if panZoom.ClearJumpToPinWhenAvailable then
+					panZoom:ClearJumpToPinWhenAvailable()
+				end
+				panZoom:SetCurrentOffset(offsetX, offsetY)
+				if panZoom.SetFinalTargetOffset then
+					panZoom:SetFinalTargetOffset(offsetX, offsetY)
+				end
+				return true
+			end
+		end
+
+		-- Better an eased pan than none.
+		self:CentreOnPlayer(normalizedX, normalizedY)
+		return false
 	end
 
 	-- What ZO_MapPanAndZoom actually offers.

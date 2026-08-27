@@ -2797,8 +2797,20 @@ function addon:Initialize()
 		-- The zoom range is computed from the window size, so it is only worth asking once the
 		-- size agrees. AdjustLiteZoom returns true when it had to change something; the map is
 		-- only shown once it has nothing left to change.
-		if settled and self.AdjustLiteZoom and self:AdjustLiteZoom() then
-			settled = false
+		if settled then
+			-- A custom zoom range sits above the one SetMapZoomMinMax installs, so while one
+			-- is in place the range we ask for has no effect on the picture. A view the game
+			-- opens for itself leaves one behind, and it can be re-installed after the single
+			-- clear on the way out of dormancy. Clearing it for as long as the settle window
+			-- lasts covers that without leaving anything running once the map is back.
+			if ZO_WorldMap_ClearCustomZoomLevels then
+				ZO_WorldMap_ClearCustomZoomLevels()
+			elseif self.panZoom and self.panZoom.ClearCustomZoomMimMax then
+				self.panZoom:ClearCustomZoomMimMax()
+			end
+			if self.AdjustLiteZoom and self:AdjustLiteZoom() then
+				settled = false
+			end
 		end
 
 		if settled or remaining <= 0 then
@@ -3070,18 +3082,23 @@ function addon:Initialize()
 	end
 
 	-- Returns true when it changed the zoom range, i.e. when the pan needs re-centring.
-	function addon:AdjustLiteZoom()
+	-- The zoom the settings ask for, as a range, without applying anything. Split out of
+	-- AdjustLiteZoom so the diagnostics can report what would be asked for and compare it
+	-- against both the installed range and the zoom the map is actually drawn at.
+	--
+	-- Returns max first: max is the zoom that was asked for, min only the floor under it.
+	function addon:ComputeLiteZoomTarget()
 		local account = self.account
 		local panZoom = self.panZoom
 		if not account or not panZoom or not ZO_WorldMapScroll then
-			return false
+			return nil
 		end
 
 		local w, h = ZO_WorldMapScroll:GetDimensions()
 		w, h = zo_round(w), zo_round(h)
 		local mapAreaUIUnits = zo_min(w, h)
 		if mapAreaUIUnits < 1 then
-			return false
+			return nil
 		end
 
 		local targetScale = CurrentScale(account)
@@ -3097,7 +3114,7 @@ function addon:Initialize()
 		local numTiles = GetMapNumTiles()
 		local tilePixelWidth = ZO_WorldMapContainer1 and ZO_WorldMapContainer1:GetTextureFileDimensions()
 		if not numTiles or numTiles < 1 or not tilePixelWidth or tilePixelWidth < 2 then
-			return false
+			return nil
 		end
 		local totalPixels = numTiles * tilePixelWidth
 		local mapAreaPixels = mapAreaUIUnits * GetUIGlobalScale()
@@ -3140,6 +3157,19 @@ function addon:Initialize()
 		local minZoom = panZoom:ComputeMinZoom()
 		if not minZoom or minZoom > maxZoom then
 			minZoom = maxZoom
+		end
+
+		return maxZoom, minZoom
+	end
+
+	function addon:AdjustLiteZoom()
+		local panZoom = self.panZoom
+		if not panZoom then
+			return false
+		end
+		local maxZoom, minZoom = self:ComputeLiteZoomTarget()
+		if not maxZoom or not minZoom then
+			return false
 		end
 
 		-- No cache on the inputs. Recompute every tick and compare against what is installed.
@@ -3965,10 +3995,29 @@ local function InitMemoryWatchdog()
 			local lo, hi = addon.panZoom:GetZoomMinMax()
 			rangeMin, rangeMax = lo or -1, hi or -1
 		end
+
+		-- The zoom the map is actually drawn at, as opposed to the range we asked for. If the
+		-- two disagree then something above SetMapZoomMinMax is in charge -- a custom zoom
+		-- range left behind by a view the game opened for itself is the obvious candidate --
+		-- and no amount of setting the range will move the picture.
+		local effZoom = -1
+		if addon.panZoom and addon.panZoom.ComputeCurvedZoom and addon.panZoom.GetCurrentNormalizedZoom then
+			local ok, value = pcall(function()
+				return addon.panZoom:ComputeCurvedZoom(addon.panZoom:GetCurrentNormalizedZoom())
+			end)
+			if ok and type(value) == "number" then
+				effZoom = value
+			end
+		end
+		-- What the add-on would ask for right now, for comparison with both of the above.
+		local wantZoom = -1
+		if addon.ComputeLiteZoomTarget then
+			wantZoom = addon:ComputeLiteZoomTarget() or -1
+		end
 		-- State half of the line: everything the suppression logic depends on.
 		local state =
 			string.format(
-			"front=%s (kb=%s gp=%s api=%s gpMode=%s) dormant=%s attached=%s hooks=%s hidden=%s anchor=%d,%d range=%.3f-%.3f mode=%s mapType=%s zoom=%.2f/%.2f(%s) player=%.3f,%.3f onOwnMap=%s size=%dx%d scroll=%dx%d follow=%d/%s centre=%d/%s setMap=%s container=%dx%d",
+			"front=%s (kb=%s gp=%s api=%s gpMode=%s) dormant=%s attached=%s hooks=%s hidden=%s anchor=%d,%d range=%.3f-%.3f eff=%.3f want=%.3f settle=%d mode=%s mapType=%s zoom=%.2f/%.2f(%s) player=%.3f,%.3f onOwnMap=%s size=%dx%d scroll=%dx%d follow=%d/%s centre=%d/%s setMap=%s container=%dx%d",
 			Bool(inFront),
 			Bool(WORLD_MAP_SCENE and WORLD_MAP_SCENE:IsShowing()),
 			Bool(GAMEPAD_WORLD_MAP_SCENE and GAMEPAD_WORLD_MAP_SCENE:IsShowing()),
@@ -3982,6 +4031,9 @@ local function InitMemoryWatchdog()
 			anchorY,
 			rangeMin,
 			rangeMax,
+			effZoom,
+			wantZoom,
+			addon.settleTicks or 0,
 			tostring(WORLD_MAP_MANAGER:GetMode()),
 			tostring(GetMapType()),
 			addon.panZoom and (addon.panZoom:GetCurrentNormalizedZoom() or -1) or -1,

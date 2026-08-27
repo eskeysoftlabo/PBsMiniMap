@@ -1468,7 +1468,9 @@ function addon:InitSettings()
 					self:DumpPanZoomApi()
 				end
 			end,
-			disable = true
+			-- Temporarily unlocked: this is the only way to see what the window is actually
+			-- doing on the way back from a map the game opened. Re-lock it once the return
+			-- from dormancy is settled.
 		}
 	)
 end

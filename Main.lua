@@ -454,6 +454,7 @@ function addon:InstallDeferredHotPathHooks()
 end
 
 function addon:SetHotPathHooksActive(active)
+	self.hotPathHooksActive = active and true or false
 	for i = 1, #hotPathHooks do
 		local hook = hotPathHooks[i]
 		-- Never install a hook that was deferred and not asked for.
@@ -527,6 +528,8 @@ function addon:SetDormant(value)
 			end
 		end
 	else
+		self.traceTicks = 20
+
 		-- Everything that defends the layout has to be in place BEFORE the map is shown.
 		--
 		-- Hot-path hooks are swapped back to vanilla while dormant, and one of them is the
@@ -3883,10 +3886,25 @@ local function InitMemoryWatchdog()
 	local function Snapshot(label)
 		local used = ReadMemory()
 		local inFront = addon.IsWorldMapInFront()
+
+		-- The position symptom is invisible without the anchor, and the zoom symptom without
+		-- the installed range. Both are read here rather than inferred.
+		local anchorX, anchorY = -9999, -9999
+		if ZO_WorldMap and ZO_WorldMap.GetAnchor then
+			local isValid, _, _, _, offsX, offsY = ZO_WorldMap:GetAnchor(0)
+			if isValid then
+				anchorX, anchorY = zo_round(offsX or 0), zo_round(offsY or 0)
+			end
+		end
+		local rangeMin, rangeMax = -1, -1
+		if addon.panZoom and addon.panZoom.GetZoomMinMax then
+			local lo, hi = addon.panZoom:GetZoomMinMax()
+			rangeMin, rangeMax = lo or -1, hi or -1
+		end
 		-- State half of the line: everything the suppression logic depends on.
 		local state =
 			string.format(
-			"front=%s (kb=%s gp=%s api=%s gpMode=%s) dormant=%s attached=%s mode=%s mapType=%s zoom=%.2f/%.2f(%s) player=%.3f,%.3f onOwnMap=%s size=%dx%d scroll=%dx%d follow=%d/%s centre=%d/%s setMap=%s container=%dx%d",
+			"front=%s (kb=%s gp=%s api=%s gpMode=%s) dormant=%s attached=%s hooks=%s hidden=%s anchor=%d,%d range=%.3f-%.3f mode=%s mapType=%s zoom=%.2f/%.2f(%s) player=%.3f,%.3f onOwnMap=%s size=%dx%d scroll=%dx%d follow=%d/%s centre=%d/%s setMap=%s container=%dx%d",
 			Bool(inFront),
 			Bool(WORLD_MAP_SCENE and WORLD_MAP_SCENE:IsShowing()),
 			Bool(GAMEPAD_WORLD_MAP_SCENE and GAMEPAD_WORLD_MAP_SCENE:IsShowing()),
@@ -3894,6 +3912,12 @@ local function InitMemoryWatchdog()
 			Bool(IsInGamepadPreferredMode()),
 			Bool(addon.dormant),
 			Bool(addon.minimapAttached),
+			Bool(addon.hotPathHooksActive),
+			Bool(ZO_WorldMap and ZO_WorldMap:IsHidden()),
+			anchorX,
+			anchorY,
+			rangeMin,
+			rangeMax,
 			tostring(WORLD_MAP_MANAGER:GetMode()),
 			tostring(GetMapType()),
 			addon.panZoom and (addon.panZoom:GetCurrentNormalizedZoom() or -1) or -1,
@@ -3983,6 +4007,15 @@ local function InitMemoryWatchdog()
 		end
 
 		if not account.debug then
+			return
+		end
+
+		-- Standing back up is where the trouble is, and it is over within a frame or two, so
+		-- for a second afterwards print every sample whether or not anything changed. Outside
+		-- that window the usual on-change rule applies, which keeps walking around quiet.
+		if (addon.traceTicks or 0) > 0 then
+			addon.traceTicks = addon.traceTicks - 1
+			Emit("wake")
 			return
 		end
 

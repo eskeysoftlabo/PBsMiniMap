@@ -3835,6 +3835,24 @@ local function InitMemoryWatchdog()
 		lastLine, lastMemory = state, used
 	end
 
+	-- Coming back from dormancy assumes the player closed the map themselves, and tears a
+	-- fast-travel session down accordingly: it clears the custom zoom range, pops the special
+	-- mode, ends the interaction, and pins the window back to minimap size. All of that is
+	-- right once the map is gone, and destructive while it is still up -- the wayshrine view
+	-- loses its zoom range and stops responding to input.
+	--
+	-- One stray sample is enough to do it, and one can occur: GetScene() picks its scene from
+	-- IsInGamepadPreferredMode(), so a momentary flip there points the check at the scene that
+	-- is not showing, and ZO_WorldMap_IsWorldMapShowing() (keyboard UI) does not cover for it.
+	-- Both read false with the map plainly on screen.
+	--
+	-- So the two directions are not treated alike. Going dormant stays immediate: a single
+	-- frame of the Tamriel-wide view under our stack frames is what fills the memory pool.
+	-- Coming back waits for the reading to hold, which costs nothing visible -- staying
+	-- dormant an extra fraction of a second looks the same as not.
+	local LEAVE_DORMANT_SAMPLES = 3
+	local clearSamples = 0
+
 	local function Check()
 		-- Drive dormancy from the observed state every frame. Scene StateChange callbacks
 		-- proved unreliable here (dormant never engaged on console), so the same value the
@@ -3844,7 +3862,15 @@ local function InitMemoryWatchdog()
 		-- reading the add-on memory pool and querying several scenes, so it is skipped
 		-- entirely unless the (locked, off by default) debug output is on -- there is nothing
 		-- to report to otherwise, and this runs behind every full-screen UI in the game.
-		addon:SetDormant(addon.IsWorldMapInFront())
+		if addon.IsWorldMapInFront() then
+			clearSamples = 0
+			addon:SetDormant(true)
+		else
+			clearSamples = clearSamples + 1
+			if clearSamples >= LEAVE_DORMANT_SAMPLES then
+				addon:SetDormant(false)
+			end
+		end
 
 		if not account.debug then
 			return

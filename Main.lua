@@ -3684,16 +3684,23 @@ function addon:Initialize()
 				function(manager, ...)
 					-- The only place the live pool is reachable from.
 					addon.locationPinManager = manager
+
+					-- Let the game build its location pins.
+					--
+					-- This used to suppress the call outright and release the pool instead,
+					-- which is not hiding names but refusing to have the pins at all -- and
+					-- the merchant and service icons the standard map shows are those pins.
+					-- The same deletion had a second home in ClearMapLocationLabels, removed
+					-- in 1.9.33; this one kept doing it on every refresh, which is why that
+					-- changed nothing.
+					--
+					-- The names are hidden afterwards, by the sweep that hides each pin's
+					-- Label child and leaves the pin alone.
+					local result = orgRefreshLocations(manager, ...)
 					if LiteMinimapActive() and addon.account and addon.account.hideMapLabels then
-						if manager.ReleaseAllObjects then
-							manager:ReleaseAllObjects()
-						end
-						if addon.pinManager then
-							addon.pinManager:RemovePins("loc")
-						end
-						return
+						addon:RequestLabelSweep()
 					end
-					return orgRefreshLocations(manager, ...)
+					return result
 				end
 			)
 		end

@@ -2858,6 +2858,25 @@ function addon:Initialize()
 			-- standard map it was plainly that: a view at a strange position that came right
 			-- as soon as the cursor moved and the game re-clamped it.
 			--
+			-- Hand the view back to the game before deciding where to point it.
+			--
+			-- This is how the original does it. Its GoMiniMapMode ends with
+			-- StopMovingOrResizing followed by ZO_WorldMap_MouseUp before it moves to the
+			-- player -- the game's own "the cursor is done" path, which is what re-clamps an
+			-- offset sitting outside the map. That is exactly the action the player performs
+			-- by hand to fix this, and calling it is a good deal more reliable than computing
+			-- a corrected offset ourselves from a container that may still be the last map's.
+			--
+			-- The original also switches map mode here, and a mode switch resets the view as a
+			-- side effect. That route is the one that costs the console memory limit, so these
+			-- two calls stand in for it.
+			if ZO_WorldMap and ZO_WorldMap.StopMovingOrResizing then
+				ZO_WorldMap:StopMovingOrResizing()
+			end
+			if ZO_WorldMap_MouseUp then
+				ZO_WorldMap_MouseUp()
+			end
+
 			-- Nothing re-clamps it for us here, so it is set outright rather than eased into.
 			if self.CentreOnPlayerHard then
 				local playerX, playerY = GetMapPlayerPosition("player")

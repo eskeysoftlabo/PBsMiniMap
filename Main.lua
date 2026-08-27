@@ -3064,15 +3064,24 @@ function addon:Initialize()
 		if panZoom.GetZoomMinMax then
 			installedMin, installedMax = panZoom:GetZoomMinMax()
 		end
-		if installedMax and zo_abs(installedMax - maxZoom) <= 0.005 and
-			(installedMin == nil or zo_abs(installedMin - minZoom) <= 0.005) then
-			return false
+		local rangeIsCurrent =
+			installedMax ~= nil and
+			zo_abs(installedMax - maxZoom) <= 0.005 and
+			(installedMin == nil or zo_abs(installedMin - minZoom) <= 0.005)
+
+		if not rangeIsCurrent then
+			panZoom:SetMapZoomMinMax(minZoom, maxZoom)
 		end
 
-		panZoom:SetMapZoomMinMax(minZoom, maxZoom)
-
-		-- Sit at the top of the range: maxZoom is the zoom that was asked for. If the game has
-		-- moved the normalized position off maximum, the range alone will not restore the view.
+		-- Sit at the top of the range: maxZoom is the zoom that was asked for.
+		--
+		-- This is checked whether or not the range needed changing. The range and the position
+		-- within it move independently, and the game does move the position on its own while
+		-- leaving the range alone -- which is what happens coming back from a map it opened
+		-- itself. Returning early on a matching range skipped this, so the minimap held
+		-- whatever zoom that view had left behind and never recovered: nothing later changed
+		-- the range, so nothing brought this line back into play.
+		local restored = false
 		if panZoom.GetCurrentNormalizedZoom then
 			local normalized = panZoom:GetCurrentNormalizedZoom()
 			if normalized and normalized < 0.995 then
@@ -3081,9 +3090,12 @@ function addon:Initialize()
 				elseif panZoom.SetCurrentNormalizedZoom then
 					panZoom:SetCurrentNormalizedZoom(1)
 				end
+				restored = true
 			end
 		end
-		return true
+
+		-- True means "the view moved, re-centre after this", so both routes count.
+		return (not rangeIsCurrent) or restored
 	end
 
 	-- Putting the player in the middle.

@@ -2779,6 +2779,8 @@ function addon:Initialize()
 		-- A ceiling, not a target: normally this clears on the first or second sample. If the
 		-- layout can never be satisfied the map still comes back rather than staying invisible.
 		self.settleTicks = 40
+		self.settleRefreshed = false
+		self.settleHold = 0
 		self:ApplyLiteAlpha()
 	end
 
@@ -2814,6 +2816,32 @@ function addon:Initialize()
 			if self.AdjustLiteZoom and self:AdjustLiteZoom() then
 				settled = false
 			end
+		end
+
+		-- Reload the picture before deciding where to point it.
+		--
+		-- The window can be the right shape at the right zoom and still be showing the tiles
+		-- the previous map loaded -- measured at ten times the size for the same zoom. That
+		-- matters beyond how it looks: the offset planted below is computed from the tile
+		-- container's dimensions, so a stale container yields an offset far outside the map.
+		-- Since the minimap runs with SetAllowPanPastMapEdge(true), nothing pulls that back,
+		-- and the view sits off in the blank past the map edge. On the standard map it shows
+		-- as exactly that -- a view outside the map's frame that only comes right once the
+		-- cursor moves and the game re-clamps it.
+		--
+		-- The player's own workaround is two separate actions, and both are needed here in the
+		-- same order: open the map, which is a full update, and then move the cursor, which
+		-- fixes the position. So refresh here, wait for the tiles, and only then plant.
+		if settled and not self.settleRefreshed then
+			self.settleRefreshed = true
+			if ZO_WorldMap_UpdateMap then
+				ZO_WorldMap_UpdateMap()
+			end
+			self.settleHold = 6
+			settled = false
+		elseif settled and (self.settleHold or 0) > 0 then
+			self.settleHold = self.settleHold - 1
+			settled = false
 		end
 
 		if settled or remaining <= 0 then

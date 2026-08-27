@@ -483,6 +483,9 @@ function addon:SetDormant(value)
 	self.dormant = value
 
 	if value then
+		-- The standard map owns the window now, so nothing of ours is waiting to settle.
+		self.settleTicks = 0
+
 		-- Stop everything we own, in this order: pending async map work first (it is the
 		-- part that runs game code under our stack frames), then the periodic updates,
 		-- then detach the minimap itself so the game owns the World Map outright.
@@ -529,6 +532,10 @@ function addon:SetDormant(value)
 		end
 	else
 		self.traceTicks = 20
+		-- Hold the window invisible from here until it is the right shape (see BeginLiteSettle).
+		if (self.initLevel or 0) < 3 and self.BeginLiteSettle then
+			self:BeginLiteSettle()
+		end
 
 		-- Everything that defends the layout has to be in place BEFORE the map is shown.
 		--
@@ -2739,10 +2746,67 @@ function addon:Initialize()
 		local wantAlpha = 1
 		if not self.dormant and (self.initLevel or 0) < 3 and account.enableMap then
 			wantAlpha = (account.liteAlpha or 100) / 100
+			-- Held transparent until the window is the shape it is supposed to be. The 200ms
+			-- watch calls this too, so the gate has to live here rather than at the call site.
+			if (self.settleTicks or 0) > 0 then
+				wantAlpha = 0
+			end
 		end
 
 		if zo_abs((ZO_WorldMap:GetAlpha() or 1) - wantAlpha) > 0.005 then
 			ZO_WorldMap:SetAlpha(wantAlpha)
+		end
+	end
+
+	-- Never draw a frame that is wrong.
+	--
+	-- Measuring the wake-up settled what three rounds of reasoning could not: for about 100ms
+	-- after the add-on stands back up the window is visible at the standard map's size and
+	-- position, with the hooks live and our layout already applied. The game re-establishes
+	-- its own geometry as the fragment is shown, after everything we do, and what actually
+	-- puts it right is our own follow tick a tick or two later.
+	--
+	-- Rather than a fourth guess at which call to pre-empt, the window is simply held
+	-- transparent until its geometry matches what was asked for. Whoever moves it and whenever
+	-- they do, the player does not see it happen.
+	function addon:BeginLiteSettle()
+		if (self.initLevel or 0) >= 3 or not ZO_WorldMap then
+			return
+		end
+		-- A ceiling, not a target: normally this clears on the first or second sample. If the
+		-- layout can never be satisfied the map still comes back rather than staying invisible.
+		self.settleTicks = 40
+		self:ApplyLiteAlpha()
+	end
+
+	function addon:UpdateLiteSettle()
+		local remaining = self.settleTicks or 0
+		if remaining <= 0 then
+			return
+		end
+		remaining = remaining - 1
+
+		-- Drive it rather than waiting for the 100ms follow tick to notice the drift. This is
+		-- the same work that tick does, just done at the first opportunity, and it stops as
+		-- soon as the window agrees -- normally within a sample or two.
+		local settled = self:IsLiteSizeCurrent() and self:IsLitePositionCurrent()
+		if not settled then
+			self:ApplyLiteMinimapLayout()
+			settled = self:IsLiteSizeCurrent() and self:IsLitePositionCurrent()
+		end
+		-- The zoom range is computed from the window size, so it is only worth asking once the
+		-- size agrees. AdjustLiteZoom returns true when it had to change something; the map is
+		-- only shown once it has nothing left to change.
+		if settled and self.AdjustLiteZoom and self:AdjustLiteZoom() then
+			settled = false
+		end
+
+		if settled or remaining <= 0 then
+			remaining = 0
+		end
+		self.settleTicks = remaining
+		if remaining == 0 then
+			self:ApplyLiteAlpha()
 		end
 	end
 
@@ -4004,6 +4068,12 @@ local function InitMemoryWatchdog()
 			if clearSamples >= LEAVE_DORMANT_SAMPLES then
 				addon:SetDormant(false)
 			end
+		end
+
+		-- Checked here rather than on the 100ms follow tick: this is the fastest thing running,
+		-- and the whole point is to show the map the moment it is right.
+		if addon.UpdateLiteSettle then
+			addon:UpdateLiteSettle()
 		end
 
 		if not account.debug then

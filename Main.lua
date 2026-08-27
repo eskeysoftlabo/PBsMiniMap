@@ -3284,7 +3284,7 @@ function addon:Initialize()
 		end
 
 		-- 2. Drive the offsets directly, cancelling any pan already in flight first -- this
-		-- time through the real ClearTargetOffset/SetFinalTargetOffset entry points.
+		-- time through the real ClearTargetOffset entry point.
 		if panZoom.GetNormalizedPositionFocusZoomAndOffset and panZoom.SetCurrentOffset then
 			local _, offsetX, offsetY = panZoom:GetNormalizedPositionFocusZoomAndOffset(normalizedX, normalizedY)
 			if offsetX and offsetY then
@@ -3295,9 +3295,10 @@ function addon:Initialize()
 					panZoom:ClearJumpToPinWhenAvailable()
 				end
 				panZoom:SetCurrentOffset(offsetX, offsetY)
-				if panZoom.SetFinalTargetOffset then
-					panZoom:SetFinalTargetOffset(offsetX, offsetY)
-				end
+				-- SetFinalTargetOffset is deliberately not called here either; see
+				-- CentreOnPlayerHard. Clearing the target and then setting a target offset
+				-- walks into ComputeCurvedZoom with no zoom to ease towards. This route has
+				-- not thrown only because route 1 above always wins.
 				route("SetCurrentOffset")
 				return
 			end
@@ -3340,9 +3341,17 @@ function addon:Initialize()
 					panZoom:ClearJumpToPinWhenAvailable()
 				end
 				panZoom:SetCurrentOffset(offsetX, offsetY)
-				if panZoom.SetFinalTargetOffset then
-					panZoom:SetFinalTargetOffset(offsetX, offsetY)
-				end
+				-- No SetFinalTargetOffset here.
+				--
+				-- It looks like the belt to ClearTargetOffset's braces, and it is the opposite:
+				-- it re-enters the easing machinery that was just emptied. Internally it asks
+				-- ComputeCurvedZoom for the zoom to ease towards, and with the target cleared
+				-- there is none, so ZO_EaseNormalizedZoom multiplies by nil and throws --
+				-- reported as a UI error on closing the map the antiquity dig opened.
+				--
+				-- Clearing the target and setting the current offset is the whole of planting
+				-- the view. There is nothing left pending for the next Update to ease into, so
+				-- there is nothing to pin down afterwards.
 				return true
 			end
 		end

@@ -527,6 +527,30 @@ function addon:SetDormant(value)
 			end
 		end
 	else
+		-- Everything that defends the layout has to be in place BEFORE the map is shown.
+		--
+		-- Hot-path hooks are swapped back to vanilla while dormant, and one of them is the
+		-- RefreshMapFrameAnchor hook that puts our position back after the game re-anchors the
+		-- map frame. Turning them on after attaching meant the game re-anchored during the
+		-- attach with nothing hooked, and the minimap came up at the full map's position and
+		-- stayed there until the 200ms layout watch noticed. The size never showed the problem
+		-- because it is pinned by dimension constraints, which need no hook to hold.
+		--
+		-- Same for the custom zoom range: a view the game opened itself installs one, it sits
+		-- above the range we ask for, and clearing it after the map is already back means the
+		-- first frames are drawn at whatever zoom that view was using.
+		self:SetHotPathHooksActive(true)
+		if self.SetWorldMapUpdateHandler then
+			self:SetWorldMapUpdateHandler(true)
+		end
+		if (self.initLevel or 0) < 3 then
+			if ZO_WorldMap_ClearCustomZoomLevels then
+				ZO_WorldMap_ClearCustomZoomLevels()
+			elseif self.panZoom and self.panZoom.ClearCustomZoomMimMax then
+				self.panZoom:ClearCustomZoomMimMax()
+			end
+		end
+
 		if self.SetMinimapAttached and self.account and self.account.enableMap then
 			-- Opening the standard map lets the game resize ZO_WorldMap to full screen, so the
 			-- lite layout has to be re-applied every time we come back to the HUD. Attaching
@@ -536,10 +560,12 @@ function addon:SetDormant(value)
 			if not attachedNow and (self.initLevel or 0) < 3 and self.ApplyLiteMinimapLayout then
 				self:ApplyLiteMinimapLayout()
 			end
-		end
-		self:SetHotPathHooksActive(true)
-		if self.SetWorldMapUpdateHandler then
-			self:SetWorldMapUpdateHandler(true)
+			-- The zoom range is computed from the window's size, so it can only be worked out
+			-- once the window is the size we just gave it. Doing it here rather than waiting
+			-- for the next follow tick keeps the first drawn frame at the right zoom.
+			if (self.initLevel or 0) < 3 and self.AdjustLiteZoom then
+				self:AdjustLiteZoom()
+			end
 		end
 		-- Minimap is up again: let the view sit past the map edge so the player marker can stay
 		-- in the middle even at the border of a small map.

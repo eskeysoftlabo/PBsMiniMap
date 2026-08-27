@@ -2780,8 +2780,36 @@ function addon:Initialize()
 		-- layout can never be satisfied the map still comes back rather than staying invisible.
 		self.settleTicks = 40
 		self.settleRefreshed = false
+		self.settleReclamped = false
 		self.settleHold = 0
 		self:ApplyLiteAlpha()
+	end
+
+	-- Hand the view back to the game and let it decide where it belongs.
+	--
+	-- This is how the original ends its return to the minimap: StopMovingOrResizing, then
+	-- ZO_WorldMap_MouseUp -- the game's own "the cursor is done" path, which re-clamps an
+	-- offset sitting outside the map -- and then a move to the player through
+	-- ZO_WorldMap_JumpToPlayer. It computes no offset of its own anywhere in that sequence.
+	--
+	-- Earlier builds called the first two and then overwrote the result with an offset worked
+	-- out here from the tile container, which at this moment may still belong to the map the
+	-- game was showing a moment ago: the clamp was applied and thrown away in the same breath.
+	-- Hence the player's experience, that the map had to be opened and the cursor moved by
+	-- hand before the view came right.
+	--
+	-- The original also switches map mode at this point, which resets the view as a side
+	-- effect. That is the route that exhausts the console memory limit, so this stands in.
+	function addon:ReclampLiteMapView()
+		if ZO_WorldMap and ZO_WorldMap.StopMovingOrResizing then
+			ZO_WorldMap:StopMovingOrResizing()
+		end
+		if ZO_WorldMap_MouseUp then
+			ZO_WorldMap_MouseUp()
+		end
+		if ZO_WorldMap_JumpToPlayer then
+			ZO_WorldMap_JumpToPlayer()
+		end
 	end
 
 	function addon:UpdateLiteSettle()
@@ -2842,6 +2870,12 @@ function addon:Initialize()
 		elseif settled and (self.settleHold or 0) > 0 then
 			self.settleHold = self.settleHold - 1
 			settled = false
+		elseif settled and not self.settleReclamped then
+			self.settleReclamped = true
+			self:ReclampLiteMapView()
+			-- The jump is eased, so let it arrive rather than revealing the window mid-slide.
+			self.settleHold = 4
+			settled = false
 		end
 
 		if settled or remaining <= 0 then
@@ -2849,40 +2883,11 @@ function addon:Initialize()
 		end
 		self.settleTicks = remaining
 		if remaining == 0 then
-			-- Plant the view before showing it.
-			--
-			-- The measured numbers said the zoom was right in every respect -- computed,
-			-- installed and drawn all read the same value the setting works out to, the same
-			-- value a correct session showed. What was actually wrong was where the view was
-			-- pointing, carried over from the map the game had just been showing. Seen on the
-			-- standard map it was plainly that: a view at a strange position that came right
-			-- as soon as the cursor moved and the game re-clamped it.
-			--
-			-- Hand the view back to the game before deciding where to point it.
-			--
-			-- This is how the original does it. Its GoMiniMapMode ends with
-			-- StopMovingOrResizing followed by ZO_WorldMap_MouseUp before it moves to the
-			-- player -- the game's own "the cursor is done" path, which is what re-clamps an
-			-- offset sitting outside the map. That is exactly the action the player performs
-			-- by hand to fix this, and calling it is a good deal more reliable than computing
-			-- a corrected offset ourselves from a container that may still be the last map's.
-			--
-			-- The original also switches map mode here, and a mode switch resets the view as a
-			-- side effect. That route is the one that costs the console memory limit, so these
-			-- two calls stand in for it.
-			if ZO_WorldMap and ZO_WorldMap.StopMovingOrResizing then
-				ZO_WorldMap:StopMovingOrResizing()
-			end
-			if ZO_WorldMap_MouseUp then
-				ZO_WorldMap_MouseUp()
-			end
-
-			-- Nothing re-clamps it for us here, so it is set outright rather than eased into.
-			if self.CentreOnPlayerHard then
-				local playerX, playerY = GetMapPlayerPosition("player")
-				if playerX and playerY then
-					self:CentreOnPlayerHard(playerX, playerY)
-				end
+			-- If the window ran out before the phases got there, hand the view back anyway
+			-- rather than revealing one that was never re-clamped.
+			if not self.settleReclamped then
+				self.settleReclamped = true
+				self:ReclampLiteMapView()
 			end
 			self:ApplyLiteAlpha()
 		end

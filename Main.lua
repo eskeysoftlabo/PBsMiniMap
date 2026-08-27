@@ -2783,7 +2783,16 @@ function addon:Initialize()
 		end
 		-- A ceiling, not a target: normally this clears on the first or second sample. If the
 		-- layout can never be satisfied the map still comes back rather than staying invisible.
-		self.settleTicks = 40
+		--
+		-- The ceiling is only started when there is not one running. Map changes can arrive in
+		-- a run -- crossing a city boundary on a mount, or a fast travel that lands next to
+		-- one -- and restarting the clock on each would keep the window transparent for as
+		-- long as they kept coming. The phases below are reset either way, so a settle already
+		-- under way still refreshes and re-clamps for the map that has just arrived; it simply
+		-- has to finish within the two seconds the first one started.
+		if (self.settleTicks or 0) <= 0 then
+			self.settleTicks = 40
+		end
 		self.settleRefreshed = false
 		self.settleReclamped = false
 		self.settleHold = 0
@@ -3091,6 +3100,19 @@ function addon:Initialize()
 			CALLBACK_MANAGER:FireCallbacks("OnWorldMapChanged")
 			if ZO_WorldMap_UpdateMap then
 				ZO_WorldMap_UpdateMap()
+			end
+
+			-- A different map is a different picture, a different tile set and a different
+			-- zoom, and the view is still pointed where it was on the last one. That is the
+			-- same position the add-on is in coming back from a map the game opened, and it
+			-- is why the zoom comes out wrong crossing between a city and the open world --
+			-- reported twice, and treated then as a fault in the zoom arithmetic.
+			--
+			-- No dormancy transition happens here, so nothing was starting a settle. Start one:
+			-- hold the window until the layout and zoom agree, refresh the tiles, hand the view
+			-- back to the game, and only then show it.
+			if addon.BeginLiteSettle and (addon.initLevel or 0) < 3 then
+				addon:BeginLiteSettle()
 			end
 		end
 		return result

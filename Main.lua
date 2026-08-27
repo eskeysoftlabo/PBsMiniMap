@@ -188,18 +188,21 @@ end
 -- its name and had no effect, which is part of why the view still clamped to the map edge.
 -- Clearing the place-name labels.
 --
--- ZO_MapLocationPins_Manager is the class table, not the live pool: calling ReleaseAllObjects
--- on it walks a nil object list and throws. The instance is only reachable as the self handed
--- to RefreshLocations, so the hook stores it and everything else goes through here.
-function addon:ClearMapLocationLabels()
-	local manager = self.locationPinManager
-	if manager and manager.ReleaseAllObjects then
-		manager:ReleaseAllObjects()
-	end
-	if self.pinManager then
-		self.pinManager:RemovePins("loc")
-	end
-end
+-- Nothing clears the location pins any more.
+--
+-- Hiding place names used to release the location pin pool and RemovePins("loc") along with
+-- it, which does not hide names so much as delete the pins that carry them -- and the marker
+-- goes with the name. That is why the merchant and service icons the standard map shows were
+-- missing from the minimap: they were being thrown away to get rid of the text on them.
+--
+-- HideMapAreaLabels is what actually hides the names. It hides the Label child of each pin
+-- and leaves the pin itself alone, which is the whole job. (An early attempt went after the
+-- ZO_MapLocationPins_Manager labels instead and changed nothing, which is how the deletion
+-- came to be here in the first place.)
+--
+-- The instance is still captured from RefreshLocations: RefreshMapLocationLabels uses it to
+-- have the game rebuild the pins when the standard map comes forward, so the names we hid one
+-- by one come back without us having to work out which ones it wanted.
 
 -- Place names attached to pins.
 --
@@ -595,9 +598,8 @@ function addon:SetDormant(value)
 			self:ApplyLiteBorder()
 		end
 		-- Labels built while the full map was open are still on the map, and the name of
-		-- whatever was last focused there lingers too. Clear both on the way back.
+		-- whatever was last focused there lingers too. Hide both on the way back.
 		if (self.initLevel or 0) < 3 and self.account and self.account.hideMapLabels then
-			self:ClearMapLocationLabels()
 			-- Immediately, rather than waiting up to a tick for the maintenance pass.
 			self:RequestLabelSweep()
 			self:HideMapAreaLabels()

@@ -453,7 +453,6 @@ function addon:InitSettings()
 					-- Take effect now: clear what is on screen when switching it on, and ask
 					-- the game to rebuild the labels when switching it off.
 					if value then
-						self:ClearMapLocationLabels()
 						self:HidePinLabels()
 					else
 						self:RefreshMapLocationLabels()

@@ -2821,6 +2821,22 @@ function addon:Initialize()
 		end
 		self.settleTicks = remaining
 		if remaining == 0 then
+			-- One real map update before the map is shown again.
+			--
+			-- Measurement ruled out everything else: coming back from a dig the computed zoom,
+			-- the installed range and the zoom actually drawn all agreed exactly with the
+			-- setting, and matched the values from a session where the picture was right. What
+			-- differed was the tile container, by a factor of ten at the same zoom -- the map
+			-- identity was the player's own, but the tiles were still the ones the dig view had
+			-- loaded. Opening and closing the standard map fixed it, and what that does is
+			-- force a full update.
+			--
+			-- So do the same thing, once, at the end of the settle rather than leaving it to
+			-- the player. It has to be outside ApplyLiteMinimapLayout, which stubs this very
+			-- function out while it moves the window.
+			if ZO_WorldMap_UpdateMap then
+				ZO_WorldMap_UpdateMap()
+			end
 			self:ApplyLiteAlpha()
 		end
 	end

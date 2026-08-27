@@ -2966,6 +2966,11 @@ function addon:Initialize()
 			-- Standard World Map is in front: leave it at full size.
 			return
 		end
+		-- Same window as the follow tick guards: the game has the map up for its own purposes
+		-- and dormancy has not been confirmed yet. Resizing it now resizes the game's view.
+		if self.IsWorldMapShownElsewhere and self.IsWorldMapShownElsewhere() then
+			return
+		end
 		local account = self.account
 		if not account or not ZO_WorldMap or ZO_WorldMap:IsHidden() then
 			return
@@ -3438,6 +3443,20 @@ function addon:Initialize()
 
 		if self.dormant then
 			self.followSkip = "dormant"
+			return
+		end
+		-- Not dormant yet, but the game already has the map up for something of its own.
+		--
+		-- Standing down takes a couple of samples to confirm, deliberately: acting on a single
+		-- reading would detach the minimap on every menu transition. This tick runs at 100ms
+		-- and lands inside that window, and everything it does it does to the game's view --
+		-- SetMapToPlayerLocation most of all, which replaces the map the game has just chosen
+		-- with the player's own. That is how the map opened by antiquity scrying came up as
+		-- the city the player was standing in instead of the field it had picked.
+		--
+		-- The confirmation stays where it is; what is guarded is the acting on it.
+		if self.IsWorldMapShownElsewhere and self.IsWorldMapShownElsewhere() then
+			self.followSkip = "foreign"
 			return
 		end
 		local account = self.account

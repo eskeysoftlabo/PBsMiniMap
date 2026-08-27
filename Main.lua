@@ -3886,6 +3886,19 @@ function addon:Initialize()
 		-- ask for the first sync outright rather than waiting for an event that has been and
 		-- gone.
 		self:RequestMapResync()
+
+		-- Settle the first appearance the same way as every later one.
+		--
+		-- The settle is otherwise only reached through SetDormant, which does nothing unless
+		-- the state actually changes -- and dormant starts out false, so the first
+		-- SetDormant(false) from the watch is a no-op and startup went straight to showing the
+		-- map. Nothing had refreshed the tiles or handed the view back to the game at that
+		-- point, which is the same position the antiquity route was in, so the map could come
+		-- up at whatever zoom and offset the game happened to be holding. It is also why the
+		-- player pin used to be off-centre until the first step.
+		if self.BeginLiteSettle then
+			self:BeginLiteSettle()
+		end
 		if self.account.debug then
 			self:DumpPanZoomApi()
 		end

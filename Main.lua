@@ -534,7 +534,10 @@ function addon:SetDormant(value)
 			end
 		end
 	else
-		self.traceTicks = 20
+		-- Only of interest with the (locked) debug output on; see the trace window in Check.
+		if self.account and self.account.debug then
+			self.traceTicks = 20
+		end
 		-- Hold the window invisible from here until it is the right shape (see BeginLiteSettle).
 		if (self.initLevel or 0) < 3 and self.BeginLiteSettle then
 			self:BeginLiteSettle()
@@ -3366,56 +3369,6 @@ function addon:Initialize()
 			ZO_WorldMap_JumpToPlayer()
 			route("ZO_WorldMap_JumpToPlayer")
 		end
-	end
-
-	-- Centring with no easing and no stale target left behind.
-	--
-	-- CentreOnPlayer prefers PanToNormalizedPosition, which sets a target and lets the game
-	-- ease towards it. That is right while walking, and wrong when standing back up: the view
-	-- can be left at an offset that belongs to the map the game was just showing, and easing
-	-- from there does not converge -- the minimap sits looking at the wrong place, which reads
-	-- as the wrong scale. Opening the standard map showed the same thing directly, a view at a
-	-- strange position that only came right once the cursor was moved and the game re-clamped
-	-- the offset.
-	--
-	-- Nothing is being clamped for us: the minimap runs with SetAllowPanPastMapEdge(true) so
-	-- the player can stay centred at a map's border, which also means an offset well outside
-	-- the map is never pulled back. So it is planted outright instead, at the offset computed
-	-- for the player's own position on the map that is loaded now.
-	function addon:CentreOnPlayerHard(normalizedX, normalizedY)
-		local panZoom = self.panZoom
-		if not panZoom then
-			return false
-		end
-
-		if panZoom.GetNormalizedPositionFocusZoomAndOffset and panZoom.SetCurrentOffset then
-			local _, offsetX, offsetY = panZoom:GetNormalizedPositionFocusZoomAndOffset(normalizedX, normalizedY)
-			if offsetX and offsetY then
-				if panZoom.ClearTargetOffset then
-					panZoom:ClearTargetOffset()
-				end
-				if panZoom.ClearJumpToPinWhenAvailable then
-					panZoom:ClearJumpToPinWhenAvailable()
-				end
-				panZoom:SetCurrentOffset(offsetX, offsetY)
-				-- No SetFinalTargetOffset here.
-				--
-				-- It looks like the belt to ClearTargetOffset's braces, and it is the opposite:
-				-- it re-enters the easing machinery that was just emptied. Internally it asks
-				-- ComputeCurvedZoom for the zoom to ease towards, and with the target cleared
-				-- there is none, so ZO_EaseNormalizedZoom multiplies by nil and throws --
-				-- reported as a UI error on closing the map the antiquity dig opened.
-				--
-				-- Clearing the target and setting the current offset is the whole of planting
-				-- the view. There is nothing left pending for the next Update to ease into, so
-				-- there is nothing to pin down afterwards.
-				return true
-			end
-		end
-
-		-- Better an eased pan than none.
-		self:CentreOnPlayer(normalizedX, normalizedY)
-		return false
 	end
 
 	-- What ZO_MapPanAndZoom actually offers.

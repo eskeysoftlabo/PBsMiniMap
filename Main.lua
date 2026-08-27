@@ -99,6 +99,43 @@ local function IsWorldMapInFront()
 end
 addon.IsWorldMapInFront = IsWorldMapInFront
 
+-- The scenes we park the minimap in. Built on first use because these globals are not all
+-- there yet when this file is read.
+local minimapHostScenes
+local function IsMinimapHostScene(scene)
+	if not minimapHostScenes then
+		minimapHostScenes = {
+			[HUD_SCENE] = true,
+			[HUD_UI_SCENE] = true,
+			[SIEGE_BAR_SCENE] = true,
+			[SIEGE_BAR_UI_SCENE] = true,
+			[LOOT_SCENE] = true,
+		}
+	end
+	return scene ~= nil and minimapHostScenes[scene] == true
+end
+
+-- True while something other than us has the World Map on screen.
+--
+-- IsWorldMapInFront only recognises the two map scenes by name, so any other route the game
+-- takes to put the map up goes unnoticed -- the view it opens after an antiquity dig, for
+-- one. Nothing then stands the add-on down, and the follow tick keeps panning and re-zooming
+-- under the player at 100ms, which reads as a map that ignores the controller.
+--
+-- Rather than naming more scenes and leaving the next one to be found the same way, ask the
+-- question from the other side: the map is visible, and the scene showing it is not ours.
+local function IsWorldMapShownElsewhere()
+	if not ZO_WorldMap or ZO_WorldMap:IsHidden() then
+		return false
+	end
+	local current = SCENE_MANAGER and SCENE_MANAGER.GetCurrentScene and SCENE_MANAGER:GetCurrentScene()
+	if not current then
+		return false
+	end
+	return not IsMinimapHostScene(current)
+end
+addon.IsWorldMapShownElsewhere = IsWorldMapShownElsewhere
+
 -- Every LibAsync task this add-on owns, so they can all be stopped at once when the standard
 -- World Map takes over. A task left running keeps executing map work in add-on context, which
 -- on console bills whatever the game does underneath it to the shared 100MB add-on pool.
@@ -551,7 +588,16 @@ function addon:SetDormant(value)
 			if WORLD_MAP_MANAGER.PopSpecialMode then
 				WORLD_MAP_MANAGER:PopSpecialMode()
 			end
-			if EndInteraction then
+			-- inSpecialMode covers every special map view, not just the wayshrine one, but
+			-- only fast travel leaves an interaction standing. Ending one the player never
+			-- started cuts short whatever they are actually in -- an antiquity dig, say.
+			local interaction = GetInteractionType and GetInteractionType()
+			local someoneElsesInteraction =
+				interaction ~= nil and
+				interaction ~= INTERACTION_NONE and
+				interaction ~= INTERACTION_FAST_TRAVEL and
+				interaction ~= INTERACTION_FAST_TRAVEL_KEEP
+			if EndInteraction and not someoneElsesInteraction then
 				EndInteraction(INTERACTION_FAST_TRAVEL_KEEP)
 				EndInteraction(INTERACTION_FAST_TRAVEL)
 			end
@@ -3851,7 +3897,12 @@ local function InitMemoryWatchdog()
 	-- Coming back waits for the reading to hold, which costs nothing visible -- staying
 	-- dormant an extra fraction of a second looks the same as not.
 	local LEAVE_DORMANT_SAMPLES = 3
-	local clearSamples = 0
+	-- The generic test wants a moment's confirmation before it is acted on: during a scene
+	-- change the outgoing scene can still be the current one while the map has not been
+	-- hidden yet, and standing down on a single frame of that would detach the minimap every
+	-- time the player opens a menu.
+	local FOREIGN_MAP_SAMPLES = 2
+	local clearSamples, foreignSamples = 0, 0
 
 	local function Check()
 		-- Drive dormancy from the observed state every frame. Scene StateChange callbacks
@@ -3862,7 +3913,17 @@ local function InitMemoryWatchdog()
 		-- reading the add-on memory pool and querying several scenes, so it is skipped
 		-- entirely unless the (locked, off by default) debug output is on -- there is nothing
 		-- to report to otherwise, and this runs behind every full-screen UI in the game.
-		if addon.IsWorldMapInFront() then
+		local inFront = addon.IsWorldMapInFront()
+		if not inFront and addon.IsWorldMapShownElsewhere() then
+			foreignSamples = foreignSamples + 1
+			if foreignSamples >= FOREIGN_MAP_SAMPLES then
+				inFront = true
+			end
+		else
+			foreignSamples = 0
+		end
+
+		if inFront then
 			clearSamples = 0
 			addon:SetDormant(true)
 		else

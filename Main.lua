@@ -2541,6 +2541,11 @@ function addon:Initialize()
 
 	self.account = ZO_SavedVars:NewAccountWide("PBsMiniMap_Data", 1, nil, accountDefaults)
 
+	-- Place names are always hidden now, and the setting for it is gone from the panel. The
+	-- value is still read in the few places that act on it, so anyone who had switched it off
+	-- is brought back to on rather than being left with a setting they can no longer reach.
+	self.account.hideMapLabels = true
+
 	local defaults = {
 		showMap = true
 	}

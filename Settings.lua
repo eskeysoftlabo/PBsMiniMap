@@ -442,30 +442,6 @@ function addon:InitSettings()
 		settings:AddSetting(
 			{
 				type = LibHarvensAddonSettings.ST_CHECKBOX,
-				label = GetString(SI_PBSMINIMAP_LITE_HIDE_LABELS),
-				tooltip = GetString(SI_PBSMINIMAP_LITE_HIDE_LABELS_TOOLTIP),
-				default = self.accountDefaults.hideMapLabels,
-				getFunction = function()
-					return self.account.hideMapLabels
-				end,
-				setFunction = function(value)
-					self.account.hideMapLabels = value
-					-- Take effect now: clear what is on screen when switching it on, and ask
-					-- the game to rebuild the labels when switching it off.
-					if value then
-						self:HidePinLabels()
-					else
-						self:RefreshMapLocationLabels()
-						if ZO_WorldMap_UpdateMap then
-							ZO_WorldMap_UpdateMap()
-						end
-					end
-				end
-			}
-		)
-		settings:AddSetting(
-			{
-				type = LibHarvensAddonSettings.ST_CHECKBOX,
 				label = GetString(SI_PBSMINIMAP_LITE_FOLLOW),
 				tooltip = GetString(SI_PBSMINIMAP_LITE_FOLLOW_TOOLTIP),
 				default = self.accountDefaults.followPlayer,

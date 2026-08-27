@@ -481,6 +481,9 @@ function addon:SetDormant(value)
 	end
 	dormant = value
 	self.dormant = value
+	-- Count the transitions. A flicker between two 50ms samples is invisible in the samples
+	-- themselves but shows up here as a count that climbs while the map sits still.
+	self.dormantFlips = (self.dormantFlips or 0) + 1
 
 	if value then
 		-- The standard map owns the window now, so nothing of ours is waiting to settle.
@@ -4000,6 +4003,18 @@ local function InitMemoryWatchdog()
 		-- two disagree then something above SetMapZoomMinMax is in charge -- a custom zoom
 		-- range left behind by a view the game opened for itself is the obvious candidate --
 		-- and no amount of setting the range will move the picture.
+		-- Which scene is actually current, and what the generic "someone else has the map up"
+		-- test makes of it. followSkip reporting "dormant" while dormant reads n means the flag
+		-- is being flipped between samples, and this is the only thing that flips it.
+		local sceneName = "?"
+		if SCENE_MANAGER and SCENE_MANAGER.GetCurrentScene then
+			local current = SCENE_MANAGER:GetCurrentScene()
+			if current and current.GetName then
+				sceneName = tostring(current:GetName())
+			end
+		end
+		local elsewhere = addon.IsWorldMapShownElsewhere and addon.IsWorldMapShownElsewhere()
+
 		local effZoom = -1
 		if addon.panZoom and addon.panZoom.ComputeCurvedZoom and addon.panZoom.GetCurrentNormalizedZoom then
 			local ok, value = pcall(function()
@@ -4017,7 +4032,7 @@ local function InitMemoryWatchdog()
 		-- State half of the line: everything the suppression logic depends on.
 		local state =
 			string.format(
-			"front=%s (kb=%s gp=%s api=%s gpMode=%s) dormant=%s attached=%s hooks=%s hidden=%s anchor=%d,%d range=%.3f-%.3f eff=%.3f want=%.3f settle=%d mode=%s mapType=%s zoom=%.2f/%.2f(%s) player=%.3f,%.3f onOwnMap=%s size=%dx%d scroll=%dx%d follow=%d/%s centre=%d/%s setMap=%s container=%dx%d",
+			"front=%s (kb=%s gp=%s api=%s gpMode=%s) dormant=%s attached=%s hooks=%s hidden=%s anchor=%d,%d range=%.3f-%.3f eff=%.3f want=%.3f settle=%d scene=%s elsewhere=%s mode=%s mapType=%s zoom=%.2f/%.2f(%s) player=%.3f,%.3f onOwnMap=%s size=%dx%d scroll=%dx%d flips=%d follow=%d/%s centre=%d/%s setMap=%s container=%dx%d",
 			Bool(inFront),
 			Bool(WORLD_MAP_SCENE and WORLD_MAP_SCENE:IsShowing()),
 			Bool(GAMEPAD_WORLD_MAP_SCENE and GAMEPAD_WORLD_MAP_SCENE:IsShowing()),
@@ -4034,6 +4049,8 @@ local function InitMemoryWatchdog()
 			effZoom,
 			wantZoom,
 			addon.settleTicks or 0,
+			sceneName,
+			Bool(elsewhere),
 			tostring(WORLD_MAP_MANAGER:GetMode()),
 			tostring(GetMapType()),
 			addon.panZoom and (addon.panZoom:GetCurrentNormalizedZoom() or -1) or -1,
@@ -4046,6 +4063,7 @@ local function InitMemoryWatchdog()
 			zo_round(select(2, ZO_WorldMap:GetDimensions())),
 			ZO_WorldMapScroll and zo_round(select(1, ZO_WorldMapScroll:GetDimensions())) or -1,
 			ZO_WorldMapScroll and zo_round(select(2, ZO_WorldMapScroll:GetDimensions())) or -1,
+			addon.dormantFlips or 0,
 			addon.followTicks or 0,
 			tostring(addon.followSkip or "never"),
 			addon.centreCalls or 0,

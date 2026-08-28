@@ -534,7 +534,9 @@ function addon:SetDormant(value)
 		if self.ApplyLiteBorder then
 			self:ApplyLiteBorder()
 			self:ApplyLiteDrawOrder()
-			-- Standard map owns the window: stop watching, and drop any hidden state.
+			-- Standard map owns the window: stop refusing its anchor changes, stop watching,
+			-- and drop any hidden state.
+			self:SetLiteAnchorGuard(false)
 			self.liteMisplaced = false
 			self:SetLitePositionGuard(false)
 		end
@@ -610,7 +612,11 @@ function addon:SetDormant(value)
 		if self.ApplyLiteBorder then
 			self:ApplyLiteBorder()
 			self:ApplyLiteDrawOrder()
-			-- Only watched while the minimap is actually up.
+			-- Only guarded and watched while the minimap is actually up. Installing is
+			-- idempotent, and doing it here covers the minimap being switched on after load
+			-- rather than at it.
+			self:InstallLiteAnchorOverride()
+			self:SetLiteAnchorGuard(true)
 			self:SetLitePositionGuard(true)
 		end
 		-- Labels built while the full map was open are still on the map, and the name of
@@ -2623,6 +2629,7 @@ function addon:Initialize()
 		}
 	end
 
+	-- Restoring the game's own layout is also us moving the window on purpose.
 	local function RestoreControlLayout(control, layout)
 		if not control or not layout then
 			return
@@ -2631,11 +2638,13 @@ function addon:Initialize()
 			control:SetDimensionConstraints(layout.minWidth, layout.minHeight, layout.maxWidth, layout.maxHeight)
 		end
 		if #layout.anchors > 0 then
+			addon:BeginOwnAnchor()
 			control:ClearAnchors()
 			for index = 1, #layout.anchors do
 				local anchor = layout.anchors[index]
 				control:SetAnchor(anchor[1], anchor[2], anchor[3], anchor[4], anchor[5])
 			end
+			addon:EndOwnAnchor()
 		end
 		control:SetDimensions(layout.width, layout.height)
 	end
@@ -2692,6 +2701,10 @@ function addon:Initialize()
 			return
 		end
 		CaptureDefaultLayout()
+
+		-- Everything below is this add-on moving the window on purpose, so the anchor guard
+		-- has to let it through.
+		self:BeginOwnAnchor()
 
 		-- Skip the full map update while only moving/resizing the window.
 		local orgZO_WorldMap_UpdateMap = ZO_WorldMap_UpdateMap
@@ -2757,6 +2770,7 @@ function addon:Initialize()
 		end
 
 		ZO_WorldMap_UpdateMap = orgZO_WorldMap_UpdateMap
+		self:EndOwnAnchor()
 	end
 
 	-- Opacity.
@@ -3084,14 +3098,86 @@ function addon:Initialize()
 
 	-- Position only: no resize calls, so it never disturbs the pan offset. Used from the
 	-- frame-anchor hook, where the game has just re-anchored the window underneath us.
+	-- Refuse the move rather than undo it.
+	--
+	-- Size never flickers because the game cannot change it: SetDimensionConstraints with
+	-- min == max means a size it asks for simply does not take. Position had no equivalent, so
+	-- every defence so far has been reactive -- notice it moved, put it back -- and reactive is
+	-- always at least one frame late. Correcting per frame narrowed the window and did not
+	-- close it, because handler order is not ours to decide and the game can move the window
+	-- after we have looked.
+	--
+	-- So give position the same property. While the minimap is up, anchor changes from anywhere
+	-- but this add-on are ignored. Nothing to notice, nothing to hide, nothing to put back.
+	--
+	-- The guard is off whenever the standard map owns the window, so the game lays its own map
+	-- out exactly as it always did.
+	local anchorGuardActive = false
+	-- A depth rather than a flag: our own anchor calls nest (the layout pass runs through the
+	-- same helpers), and a plain boolean would be cleared by the inner one on the way out.
+	local ownAnchorDepth = 0
+	addon.anchorBlocks = 0
+
+	function addon:SetLiteAnchorGuard(active)
+		anchorGuardActive = active and true or false
+	end
+
+	function addon:BeginOwnAnchor()
+		ownAnchorDepth = ownAnchorDepth + 1
+	end
+
+	function addon:EndOwnAnchor()
+		if ownAnchorDepth > 0 then
+			ownAnchorDepth = ownAnchorDepth - 1
+		end
+	end
+
+	-- Per-instance override. Whether it takes is not knowable from here, so everything else
+	-- stays in place: if these assignments do not shadow the control's own methods, behaviour
+	-- is exactly what it was before.
+	function addon:InstallLiteAnchorOverride()
+		if self.liteAnchorOverrideInstalled or not ZO_WorldMap then
+			return
+		end
+		local orgSetAnchor = ZO_WorldMap.SetAnchor
+		local orgClearAnchors = ZO_WorldMap.ClearAnchors
+		if type(orgSetAnchor) ~= "function" or type(orgClearAnchors) ~= "function" then
+			return
+		end
+
+		ZO_WorldMap.SetAnchor = function(control, ...)
+			if anchorGuardActive and ownAnchorDepth == 0 then
+				addon.anchorBlocks = addon.anchorBlocks + 1
+				return
+			end
+			return orgSetAnchor(control, ...)
+		end
+		ZO_WorldMap.ClearAnchors = function(control, ...)
+			if anchorGuardActive and ownAnchorDepth == 0 then
+				addon.anchorBlocks = addon.anchorBlocks + 1
+				return
+			end
+			return orgClearAnchors(control, ...)
+		end
+		self.liteAnchorOverrideInstalled = true
+	end
+
 	function addon:ApplyLiteAnchorOnly()
 		local account = self.account
 		if not account or not ZO_WorldMap then
 			return
 		end
-		local uiWidth, uiHeight = GuiRoot:GetDimensions()
+		local wantX, wantY = account.x, account.y
+		if not wantX or not wantY then
+			local uiWidth, uiHeight = GuiRoot:GetDimensions()
+			wantX = wantX or (uiWidth / 2 - 304)
+			wantY = wantY or (uiHeight / 2 - 368)
+		end
+
+		self:BeginOwnAnchor()
 		ZO_WorldMap:ClearAnchors()
-		ZO_WorldMap:SetAnchor(CENTER, nil, CENTER, account.x or (uiWidth / 2 - 304), account.y or (uiHeight / 2 - 368))
+		ZO_WorldMap:SetAnchor(CENTER, nil, CENTER, wantX, wantY)
+		self:EndOwnAnchor()
 	end
 
 	-- The game re-anchors and re-sizes ZO_WorldMap on its own (RefreshMapFrameAnchor and the
@@ -4140,6 +4226,8 @@ function addon:Initialize()
 		if self.BeginLiteSettle then
 			self:BeginLiteSettle()
 		end
+		self:InstallLiteAnchorOverride()
+		self:SetLiteAnchorGuard(true)
 		self:SetLitePositionGuard(true)
 		if self.account.debug then
 			self:DumpPanZoomApi()

@@ -404,6 +404,39 @@ function addon:InitSettings()
 				end
 			}
 		)
+		do
+			local drawOrderItems = {
+				{name = GetString(SI_PBSMINIMAP_LITE_DRAW_ORDER_FRONT), data = {value = "front"}},
+				{name = GetString(SI_PBSMINIMAP_LITE_DRAW_ORDER_DEFAULT), data = {value = "default"}},
+				{name = GetString(SI_PBSMINIMAP_LITE_DRAW_ORDER_BACK), data = {value = "back"}}
+			}
+			-- The dropdown works in display names, the saved setting in keys, so the two have
+			-- to be translated across. Anything unrecognised reads as the default entry.
+			local function drawOrderName(value)
+				for index = 1, #drawOrderItems do
+					if drawOrderItems[index].data.value == value then
+						return drawOrderItems[index].name
+					end
+				end
+				return drawOrderItems[2].name
+			end
+			settings:AddSetting(
+				{
+					type = LibHarvensAddonSettings.ST_DROPDOWN,
+					label = GetString(SI_PBSMINIMAP_LITE_DRAW_ORDER),
+					tooltip = GetString(SI_PBSMINIMAP_LITE_DRAW_ORDER_TOOLTIP),
+					items = drawOrderItems,
+					default = drawOrderName(self.accountDefaults.liteDrawOrder),
+					getFunction = function()
+						return drawOrderName(self.account.liteDrawOrder)
+					end,
+					setFunction = function(combobox, name, item)
+						self.account.liteDrawOrder = item.data.value
+						self:ApplyLiteDrawOrder()
+					end
+				}
+			)
+		end
 		settings:AddSetting(
 			{
 				type = LibHarvensAddonSettings.ST_CHECKBOX,

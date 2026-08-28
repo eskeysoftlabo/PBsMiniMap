@@ -126,6 +126,11 @@ local strings = {
 	SI_PBSMINIMAP_LITE_ZONE_TITLE_SIZE_TOOLTIP = "Text size of the zone name above the minimap.",
 	SI_PBSMINIMAP_LITE_BORDER = "Show border",
 	SI_PBSMINIMAP_LITE_BORDER_TOOLTIP = "Draw the map's frame around the minimap. Turn it off for a plain rectangle of map. The full map keeps its frame either way.",
+	SI_PBSMINIMAP_LITE_DRAW_ORDER = "Draw order",
+	SI_PBSMINIMAP_LITE_DRAW_ORDER_TOOLTIP = "Where the minimap sits among the rest of the interface. In front keeps it visible over other UI; behind lets other UI cover it. The full map is unaffected.",
+	SI_PBSMINIMAP_LITE_DRAW_ORDER_FRONT = "In front",
+	SI_PBSMINIMAP_LITE_DRAW_ORDER_DEFAULT = "Default",
+	SI_PBSMINIMAP_LITE_DRAW_ORDER_BACK = "Behind",
 	SI_PBSMINIMAP_APPLY_LABEL = "Apply changes",
 	SI_PBSMINIMAP_APPLY_TOOLTIP = "Reloads the interface so a change to the switches above takes effect.",
 }

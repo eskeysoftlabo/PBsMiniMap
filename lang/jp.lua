@@ -127,6 +127,11 @@ local strings = {
 	SI_PBSMINIMAP_LITE_ZONE_TITLE_SIZE_TOOLTIP = "ミニマップ上部に表示するエリア名の文字サイズです。",
 	SI_PBSMINIMAP_LITE_BORDER = "枠線を表示",
 	SI_PBSMINIMAP_LITE_BORDER_TOOLTIP = "ミニマップの周囲に地図の枠を描画します。オフにすると枠のない地図だけの表示になります。通常のマップの枠には影響しません。",
+	SI_PBSMINIMAP_LITE_DRAW_ORDER = "描画順",
+	SI_PBSMINIMAP_LITE_DRAW_ORDER_TOOLTIP = "ミニマップを他のUIに対してどの位置に描画するかを指定します。最前面は常に手前に表示し、最背面は他のUIに隠れるようにします。通常のマップには影響しません。",
+	SI_PBSMINIMAP_LITE_DRAW_ORDER_FRONT = "最前面",
+	SI_PBSMINIMAP_LITE_DRAW_ORDER_DEFAULT = "既定",
+	SI_PBSMINIMAP_LITE_DRAW_ORDER_BACK = "最背面",
 	SI_PBSMINIMAP_APPLY_LABEL = "設定を反映",
 	SI_PBSMINIMAP_APPLY_TOOLTIP = "上のスイッチの変更を反映するため、UIを再読み込みします。",
 }

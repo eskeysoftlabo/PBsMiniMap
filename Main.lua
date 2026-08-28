@@ -533,6 +533,7 @@ function addon:SetDormant(value)
 		end
 		if self.ApplyLiteBorder then
 			self:ApplyLiteBorder()
+			self:ApplyLiteDrawOrder()
 		end
 		if self.UpdateZoneTitle then
 			self:UpdateZoneTitle()
@@ -605,6 +606,7 @@ function addon:SetDormant(value)
 		end
 		if self.ApplyLiteBorder then
 			self:ApplyLiteBorder()
+			self:ApplyLiteDrawOrder()
 		end
 		-- Labels built while the full map was open are still on the map, and the name of
 		-- whatever was last focused there lingers too. Hide both on the way back.
@@ -2499,6 +2501,7 @@ function addon:Initialize()
 		followPlayer = true,
 		liteAlpha = 100,
 		hideMapLabels = true,
+		liteDrawOrder = "default",
 		showBorder = true,
 		showZoneTitle = true,
 		zoneTitleSize = 24,
@@ -2956,6 +2959,47 @@ function addon:Initialize()
 
 		if ZO_WorldMapMapFrame:IsHidden() ~= wantHidden then
 			ZO_WorldMapMapFrame:SetHidden(wantHidden)
+		end
+	end
+
+	-- Where the minimap sits in the UI stack.
+	--
+	-- ZO_WorldMap is the standard map's window as well, so the game's own draw order has to be
+	-- captured before anything is changed and handed straight back the moment the full map
+	-- comes forward -- the same arrangement as size, position, opacity and the border.
+	--
+	-- The tier is the coarse control and the one that decides this: DT_HIGH puts the window
+	-- over other UI, DT_LOW under it. "default" restores exactly what the game had rather than
+	-- assuming what that was.
+	local orgDrawTier, orgDrawLayer, orgDrawLevel
+	function addon:ApplyLiteDrawOrder()
+		if not ZO_WorldMap or not ZO_WorldMap.SetDrawTier then
+			return
+		end
+		local account = self.account
+		if not account then
+			return
+		end
+
+		if orgDrawTier == nil then
+			orgDrawTier = ZO_WorldMap:GetDrawTier()
+			orgDrawLayer = ZO_WorldMap:GetDrawLayer()
+			orgDrawLevel = ZO_WorldMap:GetDrawLevel()
+		end
+
+		local order = account.liteDrawOrder or "default"
+		if self.dormant or (self.initLevel or 0) >= 3 or not account.enableMap then
+			order = "default"
+		end
+
+		if order == "front" and DT_HIGH then
+			ZO_WorldMap:SetDrawTier(DT_HIGH)
+		elseif order == "back" and DT_LOW then
+			ZO_WorldMap:SetDrawTier(DT_LOW)
+		else
+			ZO_WorldMap:SetDrawTier(orgDrawTier)
+			ZO_WorldMap:SetDrawLayer(orgDrawLayer)
+			ZO_WorldMap:SetDrawLevel(orgDrawLevel)
 		end
 	end
 
@@ -3820,6 +3864,7 @@ function addon:Initialize()
 				self:MaintainLiteMinimapLayout()
 				self:ApplyLiteAlpha()
 				self:ApplyLiteBorder()
+				self:ApplyLiteDrawOrder()
 				local mapVisible = ZO_WorldMap and not ZO_WorldMap:IsHidden()
 				if mapVisible and not self.dormant and self.account and self.account.hideMapLabels then
 					self:SweepMapLabelsIfDue()

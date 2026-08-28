@@ -2968,9 +2968,15 @@ function addon:Initialize()
 	-- captured before anything is changed and handed straight back the moment the full map
 	-- comes forward -- the same arrangement as size, position, opacity and the border.
 	--
-	-- The tier is the coarse control and the one that decides this: DT_HIGH puts the window
-	-- over other UI, DT_LOW under it. "default" restores exactly what the game had rather than
-	-- assuming what that was.
+	-- Ordering happens within the window's own tier, never by changing it.
+	--
+	-- The tier is the coarse control -- DT_HIGH would put the map over every other tier, full
+	-- screen menus included, which is not what "in front" should mean for a HUD element. So
+	-- the captured tier is kept and only the layer inside it moves: DL_OVERLAY draws after the
+	-- other HUD controls, DL_BACKGROUND before them. Anything in a higher tier still covers
+	-- the minimap, which is the behaviour to want.
+	--
+	-- "default" restores exactly what the game had rather than assuming what that was.
 	local orgDrawTier, orgDrawLayer, orgDrawLevel
 	function addon:ApplyLiteDrawOrder()
 		if not ZO_WorldMap or not ZO_WorldMap.SetDrawTier then
@@ -2992,15 +2998,17 @@ function addon:Initialize()
 			order = "default"
 		end
 
-		if order == "front" and DT_HIGH then
-			ZO_WorldMap:SetDrawTier(DT_HIGH)
-		elseif order == "back" and DT_LOW then
-			ZO_WorldMap:SetDrawTier(DT_LOW)
-		else
-			ZO_WorldMap:SetDrawTier(orgDrawTier)
-			ZO_WorldMap:SetDrawLayer(orgDrawLayer)
-			ZO_WorldMap:SetDrawLevel(orgDrawLevel)
+		local wantLayer = orgDrawLayer
+		if order == "front" and DL_OVERLAY then
+			wantLayer = DL_OVERLAY
+		elseif order == "back" and DL_BACKGROUND then
+			wantLayer = DL_BACKGROUND
 		end
+
+		-- The tier and level are always the game's own; only the layer carries the setting.
+		ZO_WorldMap:SetDrawTier(orgDrawTier)
+		ZO_WorldMap:SetDrawLayer(wantLayer)
+		ZO_WorldMap:SetDrawLevel(orgDrawLevel)
 	end
 
 	-- Position only: no resize calls, so it never disturbs the pan offset. Used from the

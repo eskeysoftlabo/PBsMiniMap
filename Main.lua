@@ -2629,24 +2629,25 @@ function addon:Initialize()
 		}
 	end
 
-	-- Restoring the game's own layout is also us moving the window on purpose.
+	-- Restoring the game's own layout is also us moving the window on purpose, so the whole
+	-- function is exempt -- size as well as anchors, since both are refused from outside now.
 	local function RestoreControlLayout(control, layout)
 		if not control or not layout then
 			return
 		end
+		addon:BeginOwnAnchor()
 		if layout.minWidth and type(control.SetDimensionConstraints) == "function" then
 			control:SetDimensionConstraints(layout.minWidth, layout.minHeight, layout.maxWidth, layout.maxHeight)
 		end
 		if #layout.anchors > 0 then
-			addon:BeginOwnAnchor()
 			control:ClearAnchors()
 			for index = 1, #layout.anchors do
 				local anchor = layout.anchors[index]
 				control:SetAnchor(anchor[1], anchor[2], anchor[3], anchor[4], anchor[5])
 			end
-			addon:EndOwnAnchor()
 		end
 		control:SetDimensions(layout.width, layout.height)
+		addon:EndOwnAnchor()
 	end
 
 	local function CaptureDefaultLayout()
@@ -3182,6 +3183,38 @@ function addon:Initialize()
 			end
 			return orgClearAnchors(control, ...)
 		end
+
+		-- Size needs the same refusal, and it turned out to need it more.
+		--
+		-- Measurement of the flash showed the anchor correct throughout and the size going
+		-- from 274x240 to 769x769. Centred on one anchor, a window that grows expands in every
+		-- direction, which is why this read as the minimap appearing where the full map sits.
+		-- The position was never the problem.
+		--
+		-- SetDimensionConstraints with min == max was supposed to make that impossible, and it
+		-- does -- right up until the game applies a map mode, which installs constraints of its
+		-- own over ours. Once they are gone the size it asks for goes straight through. So the
+		-- constraints are defended the same way the anchor is: while the minimap is up, the
+		-- game may ask, and the answer is no.
+		local orgSetDimensions = ZO_WorldMap.SetDimensions
+		local orgSetDimensionConstraints = ZO_WorldMap.SetDimensionConstraints
+		if type(orgSetDimensions) == "function" and type(orgSetDimensionConstraints) == "function" then
+			ZO_WorldMap.SetDimensions = function(control, ...)
+				if ShouldRefuseAnchor() then
+					addon.anchorBlocks = addon.anchorBlocks + 1
+					return
+				end
+				return orgSetDimensions(control, ...)
+			end
+			ZO_WorldMap.SetDimensionConstraints = function(control, ...)
+				if ShouldRefuseAnchor() then
+					addon.anchorBlocks = addon.anchorBlocks + 1
+					return
+				end
+				return orgSetDimensionConstraints(control, ...)
+			end
+		end
+
 		self.liteAnchorOverrideInstalled = true
 	end
 

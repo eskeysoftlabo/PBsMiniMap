@@ -4491,7 +4491,7 @@ local function InitMemoryWatchdog()
 		-- State half of the line: everything the suppression logic depends on.
 		local state =
 			string.format(
-			"front=%s (kb=%s gp=%s api=%s gpMode=%s) dormant=%s attached=%s hooks=%s hidden=%s anchor=%d,%d range=%.3f-%.3f eff=%.3f want=%.3f settle=%d scene=%s elsewhere=%s mode=%s mapType=%s zoom=%.2f/%.2f(%s) player=%.3f,%.3f onOwnMap=%s size=%dx%d scroll=%dx%d flips=%d follow=%d/%s centre=%d/%s setMap=%s container=%dx%d",
+			"front=%s (kb=%s gp=%s api=%s gpMode=%s) dormant=%s attached=%s hooks=%s hidden=%s anchor=%d,%d blocks=%d range=%.3f-%.3f eff=%.3f want=%.3f settle=%d scene=%s elsewhere=%s mode=%s mapType=%s zoom=%.2f/%.2f(%s) player=%.3f,%.3f onOwnMap=%s size=%dx%d scroll=%dx%d flips=%d follow=%d/%s centre=%d/%s setMap=%s container=%dx%d",
 			Bool(inFront),
 			Bool(WORLD_MAP_SCENE and WORLD_MAP_SCENE:IsShowing()),
 			Bool(GAMEPAD_WORLD_MAP_SCENE and GAMEPAD_WORLD_MAP_SCENE:IsShowing()),
@@ -4503,6 +4503,7 @@ local function InitMemoryWatchdog()
 			Bool(ZO_WorldMap and ZO_WorldMap:IsHidden()),
 			anchorX,
 			anchorY,
+			addon.anchorBlocks or 0,
 			rangeMin,
 			rangeMax,
 			effZoom,

@@ -3140,6 +3140,21 @@ function addon:Initialize()
 			self:RequestMapResync()
 			self:UpdateZoneTitle()
 		end
+		-- The original restores its position on this one, and we were not listening at all.
+		-- The preferred mode flipping is already known to move things here: it is what picks
+		-- the scene the dormancy check looks at, and a flip mid-frame was the cause of the
+		-- wayshrine view being torn down in 1.9.17.
+		if EVENT_GAMEPAD_PREFERRED_MODE_CHANGED then
+			em:RegisterForEvent(
+				self.name .. "LiteInputMode",
+				EVENT_GAMEPAD_PREFERRED_MODE_CHANGED,
+				function()
+					if not self.dormant and self.ApplyLiteAnchorOnly then
+						self:ApplyLiteAnchorOnly()
+					end
+				end
+			)
+		end
 		em:RegisterForEvent(self.name .. "LiteZone", EVENT_ZONE_CHANGED, resync)
 		em:RegisterForEvent(self.name .. "LiteActivated", EVENT_PLAYER_ACTIVATED, resync)
 		-- Not present on every API version, so only wire it up when it exists.
@@ -4296,6 +4311,25 @@ local function InitMemoryWatchdog()
 		-- and the whole point is to show the map the moment it is right.
 		if addon.UpdateLiteSettle then
 			addon:UpdateLiteSettle()
+		end
+
+		-- Put the position back the moment it moves.
+		--
+		-- The size cannot drift: dimension constraints with min == max mean the game is unable
+		-- to change it. Position has no equivalent, so the only defence is noticing. The known
+		-- movers are hooked, but the game reaches the anchor from more places than we can
+		-- enumerate -- refreshing pins is one the player can see -- and until now the first
+		-- thing to notice was the 100ms follow tick or the 200ms layout watch. That is long
+		-- enough to be seen as the minimap appearing where the full map sits.
+		--
+		-- Two anchor reads at 50ms is cheap enough to be the front line instead. Size drift is
+		-- left to the layout watch: it means a real re-layout, which throws the pan away.
+		if (addon.initLevel or 0) < 3 and not addon.dormant and (addon.settleTicks or 0) <= 0 then
+			if not (addon.IsWorldMapShownElsewhere and addon.IsWorldMapShownElsewhere()) then
+				if addon.IsLitePositionCurrent and not addon:IsLitePositionCurrent() and addon:IsLiteSizeCurrent() then
+					addon:ApplyLiteAnchorOnly()
+				end
+			end
 		end
 
 		if not account.debug then

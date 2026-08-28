@@ -3640,6 +3640,35 @@ function addon:Initialize()
 		end
 	end
 
+	-- The picture can change without the map changing.
+	--
+	-- A settle is started on SET_MAP_RESULT_MAP_CHANGED, and a dungeon floor swap is not that:
+	-- the map id stays the same and only the tiles under it are replaced. The zoom is computed
+	-- from those tiles, so it comes out for the floor that has just been left, and the view is
+	-- still pointed where it was -- the same failure the antiquity route had, reached by a
+	-- different door.
+	--
+	-- So watch what actually decides the picture rather than the map's identity. Three numbers,
+	-- no allocation, on the 100ms tick.
+	local lastMapId, lastFloor, lastTiles
+	function addon:CheckLiteMapPicture()
+		local mapId = (GetCurrentMapId and GetCurrentMapId()) or 0
+		local floor = (GetMapFloorInfo and GetMapFloorInfo()) or 0
+		local tiles = (GetMapNumTiles and GetMapNumTiles()) or 0
+		if mapId == lastMapId and floor == lastFloor and tiles == lastTiles then
+			return
+		end
+
+		local first = lastMapId == nil
+		lastMapId, lastFloor, lastTiles = mapId, floor, tiles
+		-- Nothing to settle on the first reading: there was no previous picture to differ from.
+		if first or not self.BeginLiteSettle then
+			return
+		end
+		-- Visible: the window itself does not move for this, only what is drawn in it.
+		self:BeginLiteSettle(true)
+	end
+
 	function addon:FollowPlayerTick()
 		self.followTicks = (self.followTicks or 0) + 1
 
@@ -3660,6 +3689,15 @@ function addon:Initialize()
 		if self.IsWorldMapShownElsewhere and self.IsWorldMapShownElsewhere() then
 			self.followSkip = "foreign"
 			return
+		end
+
+		-- Before anything is computed from the map: has the picture underneath changed?
+		--
+		-- Ahead of the followPlayer guard, because a floor swap gets the zoom wrong whether or
+		-- not the player is being followed, and behind a visibility check, because there is
+		-- nothing to settle while the window is not on screen.
+		if ZO_WorldMap and not ZO_WorldMap:IsHidden() then
+			self:CheckLiteMapPicture()
 		end
 		local account = self.account
 		if not account or not account.followPlayer then

@@ -1476,8 +1476,7 @@ function addon:InitSettings()
 					self:DumpPanZoomApi()
 				end
 			end,
-			-- Unlocked again: the flash at the standard map's position has survived three
-			-- different fixes, so the next move is a measurement rather than a fourth.
+			disable = true
 		}
 	)
 end

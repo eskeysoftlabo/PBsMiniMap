@@ -534,11 +534,8 @@ function addon:SetDormant(value)
 		if self.ApplyLiteBorder then
 			self:ApplyLiteBorder()
 			self:ApplyLiteDrawOrder()
-			-- Standard map owns the window: stop refusing its anchor changes, stop watching,
-			-- and drop any hidden state.
+			-- Standard map owns the window: stop refusing its geometry changes.
 			self:SetLiteAnchorGuard(false)
-			self.liteMisplaced = false
-			self:SetLitePositionGuard(false)
 		end
 		if self.UpdateZoneTitle then
 			self:UpdateZoneTitle()
@@ -612,12 +609,10 @@ function addon:SetDormant(value)
 		if self.ApplyLiteBorder then
 			self:ApplyLiteBorder()
 			self:ApplyLiteDrawOrder()
-			-- Only guarded and watched while the minimap is actually up. Installing is
-			-- idempotent, and doing it here covers the minimap being switched on after load
-			-- rather than at it.
+			-- Only guarded while the minimap is actually up. Installing is idempotent, and
+			-- doing it here covers the minimap being switched on after load rather than at it.
 			self:InstallLiteAnchorOverride()
 			self:SetLiteAnchorGuard(true)
-			self:SetLitePositionGuard(true)
 		end
 		-- Labels built while the full map was open are still on the map, and the name of
 		-- whatever was last focused there lingers too. Hide both on the way back.
@@ -2801,14 +2796,6 @@ function addon:Initialize()
 			if (self.settleTicks or 0) > 0 and not self.settleVisible then
 				wantAlpha = 0
 			end
-			-- Same rule for a window that is simply in the wrong place: if it is not where the
-			-- player put it, it is not shown there. Position is the one thing with no hard
-			-- guarantee behind it -- the size is pinned by dimension constraints and cannot
-			-- drift at all -- so this is the backstop for the case where putting it back does
-			-- not take.
-			if self.liteMisplaced then
-				wantAlpha = 0
-			end
 		end
 
 		if zo_abs((ZO_WorldMap:GetAlpha() or 1) - wantAlpha) > 0.005 then
@@ -3037,64 +3024,6 @@ function addon:Initialize()
 		ZO_WorldMap:SetDrawTier(orgDrawTier)
 		ZO_WorldMap:SetDrawLayer(wantLayer)
 		ZO_WorldMap:SetDrawLevel(orgDrawLevel)
-	end
-
-	-- Put the position right before the frame is drawn, every frame.
-	--
-	-- The size cannot drift: dimension constraints with min == max leave the game unable to
-	-- change it. Position has no equivalent, so it has to be watched -- and watching it on a
-	-- 50ms timer means up to three frames can be drawn with the window somewhere else, which
-	-- is exactly long enough to be seen.
-	--
-	-- An interval of 0 runs this in the frame's update pass, before anything is drawn, so a
-	-- move made this frame is corrected in the same frame rather than three frames later. It
-	-- costs a GetAnchor on a frame where nothing moved, and it is registered only while the
-	-- minimap is actually up: while the standard map is in front this does not run at all,
-	-- which the 50ms timer could not say.
-	--
-	-- Handler order between controls is not ours to decide, so a move made after this runs is
-	-- still a frame late. The misplaced gate covers what this cannot: if the window is not
-	-- where the player put it, it is not shown there.
-	function addon:SetLitePositionGuard(active)
-		local name = self.name .. "LiteAnchorGuard"
-		if not active then
-			EVENT_MANAGER:UnregisterForUpdate(name)
-			return
-		end
-		EVENT_MANAGER:RegisterForUpdate(
-			name,
-			0,
-			function()
-				if self.dormant or (self.settleTicks or 0) > 0 then
-					return
-				end
-				if not ZO_WorldMap or ZO_WorldMap:IsHidden() then
-					return
-				end
-				if self.IsWorldMapShownElsewhere and self.IsWorldMapShownElsewhere() then
-					return
-				end
-				if self:IsLitePositionCurrent() then
-					if self.liteMisplaced then
-						self.liteMisplaced = false
-						self:ApplyLiteAlpha()
-					end
-					return
-				end
-				-- Only position-only drift is put right here. A size change means a real
-				-- re-layout, which throws the pan away, and belongs to the layout watch.
-				if not self:IsLiteSizeCurrent() then
-					return
-				end
-				self:ApplyLiteAnchorOnly()
-
-				local misplaced = not self:IsLitePositionCurrent()
-				if misplaced ~= (self.liteMisplaced == true) then
-					self.liteMisplaced = misplaced
-					self:ApplyLiteAlpha()
-				end
-			end
-		)
 	end
 
 	-- Position only: no resize calls, so it never disturbs the pan offset. Used from the
@@ -4284,7 +4213,6 @@ function addon:Initialize()
 		end
 		self:InstallLiteAnchorOverride()
 		self:SetLiteAnchorGuard(true)
-		self:SetLitePositionGuard(true)
 		if self.account.debug then
 			self:DumpPanZoomApi()
 		end

@@ -3122,6 +3122,29 @@ function addon:Initialize()
 		anchorGuardActive = active and true or false
 	end
 
+	-- Whether an anchor change from outside should be refused, decided at the moment of the
+	-- call rather than from a flag a timer keeps up to date.
+	--
+	-- The flag alone was not enough, and got the mirror image of the bug it was meant to fix.
+	-- Opening the standard map lays the window out before dormancy has been confirmed -- that
+	-- takes up to a sample -- so the game's own anchoring was refused, and the full map could
+	-- appear at the minimap's position for those 50ms. Asking the live question closes it:
+	-- the moment the map is genuinely being shown, anchor calls go through.
+	--
+	-- Anchor calls are rare, so this costs nothing measurable.
+	local function ShouldRefuseAnchor()
+		if not anchorGuardActive or ownAnchorDepth > 0 then
+			return false
+		end
+		if IsWorldMapInFront() then
+			return false
+		end
+		if IsWorldMapShownElsewhere() then
+			return false
+		end
+		return true
+	end
+
 	function addon:BeginOwnAnchor()
 		ownAnchorDepth = ownAnchorDepth + 1
 	end
@@ -3146,14 +3169,14 @@ function addon:Initialize()
 		end
 
 		ZO_WorldMap.SetAnchor = function(control, ...)
-			if anchorGuardActive and ownAnchorDepth == 0 then
+			if ShouldRefuseAnchor() then
 				addon.anchorBlocks = addon.anchorBlocks + 1
 				return
 			end
 			return orgSetAnchor(control, ...)
 		end
 		ZO_WorldMap.ClearAnchors = function(control, ...)
-			if anchorGuardActive and ownAnchorDepth == 0 then
+			if ShouldRefuseAnchor() then
 				addon.anchorBlocks = addon.anchorBlocks + 1
 				return
 			end

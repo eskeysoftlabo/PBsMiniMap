@@ -3075,13 +3075,22 @@ function addon:Initialize()
 	end
 
 	local function LitePositionMatches(account)
-		local uiWidth, uiHeight = GuiRoot:GetDimensions()
-		local wantX = account.x or (uiWidth / 2 - 304)
-		local wantY = account.y or (uiHeight / 2 - 368)
-
+		-- Read the anchor first and the screen only if it is needed.
+		--
+		-- This runs on the 50ms watch, and GuiRoot:GetDimensions() is only there to work out
+		-- a default for a position that has not been set. Once the player has placed the
+		-- minimap -- which is the case whenever this matters -- it is a wasted call on every
+		-- sample. A mismatched anchor point is likewise decided without knowing the offsets.
 		local isValid, point, _, relativePoint, offsetX, offsetY = ZO_WorldMap:GetAnchor(0)
 		if not isValid or point ~= CENTER or relativePoint ~= CENTER then
 			return false
+		end
+
+		local wantX, wantY = account.x, account.y
+		if not wantX or not wantY then
+			local uiWidth, uiHeight = GuiRoot:GetDimensions()
+			wantX = wantX or (uiWidth / 2 - 304)
+			wantY = wantY or (uiHeight / 2 - 368)
 		end
 		if zo_abs(offsetX - wantX) > 0.5 or zo_abs(offsetY - wantY) > 0.5 then
 			return false

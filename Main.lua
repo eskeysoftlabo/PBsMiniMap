@@ -534,6 +534,9 @@ function addon:SetDormant(value)
 		if self.ApplyLiteBorder then
 			self:ApplyLiteBorder()
 			self:ApplyLiteDrawOrder()
+			-- Standard map owns the window: stop watching, and drop any hidden state.
+			self.liteMisplaced = false
+			self:SetLitePositionGuard(false)
 		end
 		if self.UpdateZoneTitle then
 			self:UpdateZoneTitle()
@@ -607,6 +610,8 @@ function addon:SetDormant(value)
 		if self.ApplyLiteBorder then
 			self:ApplyLiteBorder()
 			self:ApplyLiteDrawOrder()
+			-- Only watched while the minimap is actually up.
+			self:SetLitePositionGuard(true)
 		end
 		-- Labels built while the full map was open are still on the map, and the name of
 		-- whatever was last focused there lingers too. Hide both on the way back.
@@ -3019,6 +3024,64 @@ function addon:Initialize()
 		ZO_WorldMap:SetDrawLevel(orgDrawLevel)
 	end
 
+	-- Put the position right before the frame is drawn, every frame.
+	--
+	-- The size cannot drift: dimension constraints with min == max leave the game unable to
+	-- change it. Position has no equivalent, so it has to be watched -- and watching it on a
+	-- 50ms timer means up to three frames can be drawn with the window somewhere else, which
+	-- is exactly long enough to be seen.
+	--
+	-- An interval of 0 runs this in the frame's update pass, before anything is drawn, so a
+	-- move made this frame is corrected in the same frame rather than three frames later. It
+	-- costs a GetAnchor on a frame where nothing moved, and it is registered only while the
+	-- minimap is actually up: while the standard map is in front this does not run at all,
+	-- which the 50ms timer could not say.
+	--
+	-- Handler order between controls is not ours to decide, so a move made after this runs is
+	-- still a frame late. The misplaced gate covers what this cannot: if the window is not
+	-- where the player put it, it is not shown there.
+	function addon:SetLitePositionGuard(active)
+		local name = self.name .. "LiteAnchorGuard"
+		if not active then
+			EVENT_MANAGER:UnregisterForUpdate(name)
+			return
+		end
+		EVENT_MANAGER:RegisterForUpdate(
+			name,
+			0,
+			function()
+				if self.dormant or (self.settleTicks or 0) > 0 then
+					return
+				end
+				if not ZO_WorldMap or ZO_WorldMap:IsHidden() then
+					return
+				end
+				if self.IsWorldMapShownElsewhere and self.IsWorldMapShownElsewhere() then
+					return
+				end
+				if self:IsLitePositionCurrent() then
+					if self.liteMisplaced then
+						self.liteMisplaced = false
+						self:ApplyLiteAlpha()
+					end
+					return
+				end
+				-- Only position-only drift is put right here. A size change means a real
+				-- re-layout, which throws the pan away, and belongs to the layout watch.
+				if not self:IsLiteSizeCurrent() then
+					return
+				end
+				self:ApplyLiteAnchorOnly()
+
+				local misplaced = not self:IsLitePositionCurrent()
+				if misplaced ~= (self.liteMisplaced == true) then
+					self.liteMisplaced = misplaced
+					self:ApplyLiteAlpha()
+				end
+			end
+		)
+	end
+
 	-- Position only: no resize calls, so it never disturbs the pan offset. Used from the
 	-- frame-anchor hook, where the game has just re-anchored the window underneath us.
 	function addon:ApplyLiteAnchorOnly()
@@ -4039,6 +4102,7 @@ function addon:Initialize()
 		if self.BeginLiteSettle then
 			self:BeginLiteSettle()
 		end
+		self:SetLitePositionGuard(true)
 		if self.account.debug then
 			self:DumpPanZoomApi()
 		end
@@ -4390,36 +4454,6 @@ local function InitMemoryWatchdog()
 		-- and the whole point is to show the map the moment it is right.
 		if addon.UpdateLiteSettle then
 			addon:UpdateLiteSettle()
-		end
-
-		-- Put the position back the moment it moves.
-		--
-		-- The size cannot drift: dimension constraints with min == max mean the game is unable
-		-- to change it. Position has no equivalent, so the only defence is noticing. The known
-		-- movers are hooked, but the game reaches the anchor from more places than we can
-		-- enumerate -- refreshing pins is one the player can see -- and until now the first
-		-- thing to notice was the 100ms follow tick or the 200ms layout watch. That is long
-		-- enough to be seen as the minimap appearing where the full map sits.
-		--
-		-- Two anchor reads at 50ms is cheap enough to be the front line instead. Size drift is
-		-- left to the layout watch: it means a real re-layout, which throws the pan away.
-		if (addon.initLevel or 0) < 3 and not addon.dormant and (addon.settleTicks or 0) <= 0 then
-			if not (addon.IsWorldMapShownElsewhere and addon.IsWorldMapShownElsewhere()) then
-				if addon.IsLitePositionCurrent and addon.IsLiteSizeCurrent then
-					local misplaced = false
-					if not addon:IsLitePositionCurrent() and addon:IsLiteSizeCurrent() then
-						addon:ApplyLiteAnchorOnly()
-						-- Putting it back normally takes on the spot. If it did not, the
-						-- window is somewhere the player did not ask for, and it is better
-						-- not shown at all until it is.
-						misplaced = not addon:IsLitePositionCurrent()
-					end
-					if misplaced ~= (addon.liteMisplaced == true) then
-						addon.liteMisplaced = misplaced
-						addon:ApplyLiteAlpha()
-					end
-				end
-			end
 		end
 
 		if not account.debug then

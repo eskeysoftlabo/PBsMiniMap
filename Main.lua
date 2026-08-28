@@ -128,6 +128,15 @@ local function IsWorldMapShownElsewhere()
 	if not ZO_WorldMap or ZO_WorldMap:IsHidden() then
 		return false
 	end
+	-- Not elsewhere: it is ours.
+	--
+	-- The settings panel's live preview parks the map fragment in whatever scene the panel is
+	-- showing in, which is not one of the HUD scenes. Without this the add-on stands down for
+	-- its own preview -- the window goes back to the standard map's size and the border comes
+	-- back, which is precisely what the dormant state looks like.
+	if addon.litePreviewAdded then
+		return false
+	end
 	local current = SCENE_MANAGER and SCENE_MANAGER.GetCurrentScene and SCENE_MANAGER:GetCurrentScene()
 	if not current then
 		return false

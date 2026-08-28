@@ -2781,6 +2781,14 @@ function addon:Initialize()
 			if (self.settleTicks or 0) > 0 and not self.settleVisible then
 				wantAlpha = 0
 			end
+			-- Same rule for a window that is simply in the wrong place: if it is not where the
+			-- player put it, it is not shown there. Position is the one thing with no hard
+			-- guarantee behind it -- the size is pinned by dimension constraints and cannot
+			-- drift at all -- so this is the backstop for the case where putting it back does
+			-- not take.
+			if self.liteMisplaced then
+				wantAlpha = 0
+			end
 		end
 
 		if zo_abs((ZO_WorldMap:GetAlpha() or 1) - wantAlpha) > 0.005 then
@@ -4388,8 +4396,19 @@ local function InitMemoryWatchdog()
 		-- left to the layout watch: it means a real re-layout, which throws the pan away.
 		if (addon.initLevel or 0) < 3 and not addon.dormant and (addon.settleTicks or 0) <= 0 then
 			if not (addon.IsWorldMapShownElsewhere and addon.IsWorldMapShownElsewhere()) then
-				if addon.IsLitePositionCurrent and not addon:IsLitePositionCurrent() and addon:IsLiteSizeCurrent() then
-					addon:ApplyLiteAnchorOnly()
+				if addon.IsLitePositionCurrent and addon.IsLiteSizeCurrent then
+					local misplaced = false
+					if not addon:IsLitePositionCurrent() and addon:IsLiteSizeCurrent() then
+						addon:ApplyLiteAnchorOnly()
+						-- Putting it back normally takes on the spot. If it did not, the
+						-- window is somewhere the player did not ask for, and it is better
+						-- not shown at all until it is.
+						misplaced = not addon:IsLitePositionCurrent()
+					end
+					if misplaced ~= (addon.liteMisplaced == true) then
+						addon.liteMisplaced = misplaced
+						addon:ApplyLiteAlpha()
+					end
 				end
 			end
 		end

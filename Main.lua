@@ -456,11 +456,33 @@ local function HookHotPathDeferred(container, key, addonImpl)
 	return vanilla
 end
 
+-- Swapping a hook in or out means writing a saved function into a shared slot, and that slot
+-- does not belong to this add-on alone.
+--
+-- If another add-on has hooked the same function after we did, what is installed is its
+-- wrapper -- around ours. Writing our saved pointer over that does not remove our hook, it
+-- removes theirs, permanently and silently. HarvestMap hooks
+-- ZO_WorldMapPins_Manager:UpdatePinsForMapSizeChange, which is how its pins follow the zoom,
+-- and it stopped working the first time the player opened and closed the world map: that is
+-- the first dormancy transition, and the transition was overwriting its wrapper.
+--
+-- So a swap only happens when what is installed is still the exact function we expect to be
+-- replacing. When somebody has wrapped us we leave the chain alone and stay in it; our own
+-- implementations already hand straight back while the standard map is in front, which is the
+-- state the swap was for.
+local function SwapHook(hook, from, to)
+	if hook.container[hook.key] == from then
+		hook.container[hook.key] = to
+		return true
+	end
+	return false
+end
+
 function addon:InstallDeferredHotPathHooks()
 	for i = 1, #pendingHooks do
 		local hook = pendingHooks[i]
 		hook.pending = nil
-		hook.container[hook.key] = hook.addonImpl
+		SwapHook(hook, hook.vanilla, hook.addonImpl)
 	end
 	pendingHooks = {}
 end
@@ -471,7 +493,11 @@ function addon:SetHotPathHooksActive(active)
 		local hook = hotPathHooks[i]
 		-- Never install a hook that was deferred and not asked for.
 		if not hook.pending then
-			hook.container[hook.key] = active and hook.addonImpl or hook.vanilla
+			if active then
+				SwapHook(hook, hook.vanilla, hook.addonImpl)
+			else
+				SwapHook(hook, hook.addonImpl, hook.vanilla)
+			end
 		end
 	end
 end

@@ -1113,6 +1113,23 @@ function addon:InitTweaks()
 			labelControl:SetDrawLevel(pinLevel + 1)
 		end
 		function ZO_WorldMapPins_Manager:UpdatePinsForMapSizeChange()
+			-- Hand straight back unless the custom minimap mode is actually in use.
+			--
+			-- This is the async pin-resize machinery, and it belongs to that mode. Every other
+			-- replacement in this file is gated the same way; this one was not, so it ran on
+			-- the lite path where the mode is never entered.
+			--
+			-- That matters beyond wasted work. Add-ons load HarvestMap before PBsMiniMap, so
+			-- its ZO_PreHook on this method ends up underneath our replacement -- and the cache
+			-- below returns without calling through whenever the container has not changed
+			-- size. HarvestMap's hook is what moves its pins when the map zooms, so its pins
+			-- stopped following the zoom on the standard map.
+			--
+			-- Anything hooked under us now always runs, which is what "no involvement while
+			-- the standard map is showing" was supposed to mean in the first place.
+			if not WORLD_MAP_MANAGER:IsInMode(MAP_MODE_PBS_MINIMAP) then
+				return orgUpdatePinsForMapSizeChange(self)
+			end
 			w, h = ZO_WorldMapContainer:GetDimensions()
 			local zone = GetMapTileTexture()
 			if lastW ~= w or lastH ~= h or lastZone ~= zone then

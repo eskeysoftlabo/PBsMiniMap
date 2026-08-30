@@ -2691,12 +2691,58 @@ function addon:Initialize()
 		ZO_WorldMap_UpdateMap = orgZO_WorldMap_UpdateMap
 	end
 
+	-- The game persists the map window's geometry, and we must not be the one writing it.
+	--
+	-- ZO_WorldMap_OnResizeStop calls SaveMapPosition, and SetMapWindowSize ends by storing the
+	-- new width and height. Both write into WORLD_MAP_MANAGER:GetModeData(), and that table is
+	-- g_savedVars[mode] -- the game's own ZO_Ingame_SavedVariables. Both are guarded by
+	-- IsInMode(MAP_MODE_SMALL_CUSTOM), so with the map in any other mode they do nothing, and
+	-- the logs from this add-on have only ever shown mode 2 (MAP_MODE_LARGE_CUSTOM).
+	--
+	-- But a player whose map is in the small mode would have the minimap's size and position
+	-- written into their saved standard-map geometry, every time the layout was applied, and
+	-- it would survive uninstalling this add-on. So the mode data is put back exactly as it
+	-- was around anything that could touch it.
+	local function CaptureModeData()
+		if not WORLD_MAP_MANAGER or not WORLD_MAP_MANAGER.GetModeData then
+			return nil
+		end
+		if not MAP_MODE_SMALL_CUSTOM or not WORLD_MAP_MANAGER:IsInMode(MAP_MODE_SMALL_CUSTOM) then
+			return nil
+		end
+		local modeData = WORLD_MAP_MANAGER:GetModeData()
+		if not modeData then
+			return nil
+		end
+		return {
+			data = modeData,
+			width = modeData.width,
+			height = modeData.height,
+			point = modeData.point,
+			relPoint = modeData.relPoint,
+			x = modeData.x,
+			y = modeData.y,
+		}
+	end
+
+	local function RestoreModeData(saved)
+		if not saved then
+			return
+		end
+		local modeData = saved.data
+		modeData.width, modeData.height = saved.width, saved.height
+		modeData.point, modeData.relPoint = saved.point, saved.relPoint
+		modeData.x, modeData.y = saved.x, saved.y
+	end
+
 	function addon:ApplyLiteMinimapLayout()
 		local account = self.account
 		if not account or not ZO_WorldMap then
 			return
 		end
 		CaptureDefaultLayout()
+
+		local savedModeData = CaptureModeData()
 
 		-- Everything below is this add-on moving the window on purpose, so the anchor guard
 		-- has to let it through.
@@ -2766,6 +2812,7 @@ function addon:Initialize()
 		end
 
 		ZO_WorldMap_UpdateMap = orgZO_WorldMap_UpdateMap
+		RestoreModeData(savedModeData)
 		self:EndOwnAnchor()
 	end
 

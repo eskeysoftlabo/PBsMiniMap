@@ -1182,6 +1182,22 @@ function addon:InitRequiredModifications()
 		ZO_WorldMapPins_Manager,
 		"UpdatePinsForMapSizeChange",
 		function(pins)
+			-- Never stand between the game and anything hooked beneath us while the standard
+			-- map is in front.
+			--
+			-- This hook exists to drop redundant full pin refreshes, which is worth having on
+			-- the HUD where the add-on memory pool is the constraint. But dropping a call also
+			-- drops everything hooked under it: HarvestMap tracks zoom with a ZO_PreHook on
+			-- this very method, add-ons load it before this one so its hook sits underneath,
+			-- and its pins stopped following the zoom on the standard map because the call
+			-- never reached it.
+			--
+			-- On the standard map there is nothing to save -- the add-on is meant to be
+			-- invisible there -- so the call goes straight through.
+			if IsWorldMapInFront() then
+				return orgUpdatePinsForMapSizeChange(pins)
+			end
+
 			local w, h = ZO_WorldMapContainer:GetDimensions()
 			w, h = zo_round(w), zo_round(h)
 			local zone = GetMapTileTexture()
@@ -3411,54 +3427,6 @@ function addon:Initialize()
 		return result
 	end
 
-	-- Let HarvestMap see that a minimap is up.
-	--
-	-- HarvestMap decides what it is looking at like this:
-	--
-	--   isMinimap = FyrMM or (AUI and AUI.Minimap:IsEnabled()) or VOTANS_MINIMAP
-	--   if isMinimap then MINIMAP elseif not ZO_WorldMap:IsHidden() then WORLDMAP else NO_MAP
-	--
-	-- Recognising none of those globals it falls through to the second test -- and this add-on
-	-- keeps ZO_WorldMap shown on the HUD, so that test is true for as long as the game is
-	-- running. HarvestMap concludes the full map is permanently open, never sees it close, and
-	-- its state handling stops working. Not merely missing pins on the minimap: it stops.
-	--
-	-- Those three globals are the whole of its extension point, and VOTANS_MINIMAP is the case
-	-- that matches this add-on exactly -- a minimap that is the game's own map window, where
-	-- its VOTAN_MODE parents the pin container to ZO_WorldMapContainer and nothing else.
-	--
-	-- So the global is declared, but narrowly: only when HarvestMap is actually loaded, only
-	-- when nothing else has claimed it, and as a bare marker table rather than this add-on --
-	-- HarvestMap guards its one votan-specific branch behind VOTANS_MINIMAP.scale, which a
-	-- table without that field short-circuits past.
-	function addon:DeclareMinimapForHarvestMap()
-		if (self.initLevel or 0) >= 3 or not self.account or not self.account.enableMap then
-			return
-		end
-		if VOTANS_MINIMAP ~= nil or Harvest == nil then
-			return
-		end
-		VOTANS_MINIMAP = {isPBsMiniMap = true}
-
-		-- Then tell it to look again.
-		--
-		-- HarvestMap only re-checks when ZO_WorldMap is shown or hidden, or when a map scene
-		-- changes state. This add-on shows that window once and never hides it, so declaring
-		-- the global on its own would sit unread until the player next opened and closed the
-		-- full map -- and by then it has already decided the world map is permanently open.
-		--
-		-- Both entry points are reachable through its module registry. The misspelling is
-		-- HarvestMap's own.
-		local mapMode = Harvest.mapMode
-		if mapMode and mapMode.CheckModeAndNotifty then
-			mapMode:CheckModeAndNotifty()
-		end
-		local pinController = Harvest.pinController
-		if pinController and pinController.CheckMapMode then
-			pinController:CheckMapMode()
-		end
-	end
-
 	function addon:StartLiteZoneWatch()
 		local function resync()
 			self:RequestMapResync()
@@ -3483,11 +3451,7 @@ function addon:Initialize()
 		em:RegisterForEvent(
 			self.name .. "LiteActivated",
 			EVENT_PLAYER_ACTIVATED,
-			function(...)
-				-- By now every add-on has loaded, so HarvestMap is either there or it is not.
-				self:DeclareMinimapForHarvestMap()
-				resync(...)
-			end
+			resync
 		)
 		-- Not present on every API version, so only wire it up when it exists.
 		if EVENT_LINKED_WORLD_POSITION_CHANGED then

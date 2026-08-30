@@ -3347,6 +3347,36 @@ function addon:Initialize()
 		return result
 	end
 
+	-- Let HarvestMap see that a minimap is up.
+	--
+	-- HarvestMap decides what it is looking at like this:
+	--
+	--   isMinimap = FyrMM or (AUI and AUI.Minimap:IsEnabled()) or VOTANS_MINIMAP
+	--   if isMinimap then MINIMAP elseif not ZO_WorldMap:IsHidden() then WORLDMAP else NO_MAP
+	--
+	-- Recognising none of those globals it falls through to the second test -- and this add-on
+	-- keeps ZO_WorldMap shown on the HUD, so that test is true for as long as the game is
+	-- running. HarvestMap concludes the full map is permanently open, never sees it close, and
+	-- its state handling stops working. Not merely missing pins on the minimap: it stops.
+	--
+	-- Those three globals are the whole of its extension point, and VOTANS_MINIMAP is the case
+	-- that matches this add-on exactly -- a minimap that is the game's own map window, where
+	-- its VOTAN_MODE parents the pin container to ZO_WorldMapContainer and nothing else.
+	--
+	-- So the global is declared, but narrowly: only when HarvestMap is actually loaded, only
+	-- when nothing else has claimed it, and as a bare marker table rather than this add-on --
+	-- HarvestMap guards its one votan-specific branch behind VOTANS_MINIMAP.scale, which a
+	-- table without that field short-circuits past.
+	function addon:DeclareMinimapForHarvestMap()
+		if (self.initLevel or 0) >= 3 or not self.account or not self.account.enableMap then
+			return
+		end
+		if VOTANS_MINIMAP ~= nil or Harvest == nil then
+			return
+		end
+		VOTANS_MINIMAP = {isPBsMiniMap = true}
+	end
+
 	function addon:StartLiteZoneWatch()
 		local function resync()
 			self:RequestMapResync()
@@ -3368,7 +3398,15 @@ function addon:Initialize()
 			)
 		end
 		em:RegisterForEvent(self.name .. "LiteZone", EVENT_ZONE_CHANGED, resync)
-		em:RegisterForEvent(self.name .. "LiteActivated", EVENT_PLAYER_ACTIVATED, resync)
+		em:RegisterForEvent(
+			self.name .. "LiteActivated",
+			EVENT_PLAYER_ACTIVATED,
+			function(...)
+				-- By now every add-on has loaded, so HarvestMap is either there or it is not.
+				self:DeclareMinimapForHarvestMap()
+				resync(...)
+			end
+		)
 		-- Not present on every API version, so only wire it up when it exists.
 		if EVENT_LINKED_WORLD_POSITION_CHANGED then
 			em:RegisterForEvent(self.name .. "LiteLinked", EVENT_LINKED_WORLD_POSITION_CHANGED, resync)

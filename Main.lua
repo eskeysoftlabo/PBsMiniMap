@@ -3375,6 +3375,24 @@ function addon:Initialize()
 			return
 		end
 		VOTANS_MINIMAP = {isPBsMiniMap = true}
+
+		-- Then tell it to look again.
+		--
+		-- HarvestMap only re-checks when ZO_WorldMap is shown or hidden, or when a map scene
+		-- changes state. This add-on shows that window once and never hides it, so declaring
+		-- the global on its own would sit unread until the player next opened and closed the
+		-- full map -- and by then it has already decided the world map is permanently open.
+		--
+		-- Both entry points are reachable through its module registry. The misspelling is
+		-- HarvestMap's own.
+		local mapMode = Harvest.mapMode
+		if mapMode and mapMode.CheckModeAndNotifty then
+			mapMode:CheckModeAndNotifty()
+		end
+		local pinController = Harvest.pinController
+		if pinController and pinController.CheckMapMode then
+			pinController:CheckMapMode()
+		end
 	end
 
 	function addon:StartLiteZoneWatch()

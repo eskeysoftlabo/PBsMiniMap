@@ -2576,7 +2576,12 @@ function addon:Initialize()
 		liteScale = 1.3,
 		liteScaleSubZone = 0.35,
 		liteScaleDungeon = 0.5,
-		liteScaleBattleground = 0.5,
+		-- A battleground is an arena, closer in size to an interior than to a dungeon, and it
+		-- was given the dungeon's number without anyone looking at the result. At 0.5 it draws
+		-- two and a half times more magnified than the value that reads comfortably on the
+		-- small subzone maps.
+		liteScaleBattleground = 0.3,
+		bgScaleRetuned = false,
 		zoom = 1.3,
 		mountedZoom = 1,
 		subZoneZoom = 1,
@@ -2622,6 +2627,19 @@ function addon:Initialize()
 	-- value is still read in the few places that act on it, so anyone who had switched it off
 	-- is brought back to on rather than being left with a setting they can no longer reach.
 	self.account.hideMapLabels = true
+
+	-- One-off retune of the battleground zoom.
+	--
+	-- ZO_SavedVars copies the defaults into the saved table when it first creates it, so
+	-- lowering the default alone would reach nobody who has already played. This moves the
+	-- value only for players still sitting on the old default -- anyone who has chosen their
+	-- own number keeps it -- and marks itself done so a later change back is never undone.
+	if not self.account.bgScaleRetuned then
+		if self.account.liteScaleBattleground == 0.5 then
+			self.account.liteScaleBattleground = accountDefaults.liteScaleBattleground
+		end
+		self.account.bgScaleRetuned = true
+	end
 
 	local defaults = {
 		showMap = true

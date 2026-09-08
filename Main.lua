@@ -575,6 +575,24 @@ function addon:SetDormant(value)
 			if panZoom.SetMapZoomMinMax and panZoom.ComputeMinZoom and panZoom.ComputeMaxZoom then
 				panZoom:SetMapZoomMinMax(panZoom:ComputeMinZoom(), panZoom:ComputeMaxZoom())
 			end
+
+			-- And put the view back on the player.
+			--
+			-- The offset is left wherever the minimap had it, which is centred on the player
+			-- but at the minimap's zoom, and often outside the map edge -- the minimap runs
+			-- with SetAllowPanPastMapEdge on so the player can stay centred at a border. Handed
+			-- to the full map at its own zoom that lands somewhere arbitrary, so the map opens
+			-- looking at the wrong place.
+			--
+			-- InitializeMap clears the pending offset before it recomputes; do the same, then
+			-- move to the player through the game's own helper rather than computing an offset
+			-- here, for the reasons in ReclampLiteMapView.
+			if panZoom.ClearTargetOffset then
+				panZoom:ClearTargetOffset()
+			end
+			if ZO_WorldMap_JumpToPlayer then
+				ZO_WorldMap_JumpToPlayer()
+			end
 		end
 		if self.ApplyLiteAlpha then
 			self:ApplyLiteAlpha()
@@ -2603,8 +2621,8 @@ function addon:Initialize()
 		-- two and a half times more magnified than the value that reads comfortably on the
 		-- small subzone maps.
 		liteScaleBattleground = 0.3,
-		-- Cyrodiil and the Imperial City overview: larger than an interior, smaller and far
-		-- denser than an ordinary outdoor zone. A starting point rather than a measured value.
+		-- The Imperial City districts: subzone maps, but far larger and denser than a building
+		-- or a town. A starting point rather than a measured value.
 		liteScaleAva = 0.6,
 		bgScaleRetuned = false,
 		zoom = 1.3,
@@ -3553,14 +3571,19 @@ function addon:Initialize()
 			return "bg"
 		elseif contentType == MAP_CONTENT_DUNGEON then
 			return "dungeon"
+		elseif MAP_CONTENT_AVA and contentType == MAP_CONTENT_AVA and GetMapType() == MAPTYPE_SUBZONE then
+			-- The Imperial City districts, and only those.
+			--
+			-- Both halves of the test are needed. AvA on its own is also Cyrodiil, which is an
+			-- ordinary outdoor zone as far as the zoom is concerned and should stay on the
+			-- outdoor setting. Subzone on its own is every building and city in the game. The
+			-- districts are the intersection: AvA content drawn on a subzone map.
+			--
+			-- This has to come before the plain subzone test, or the districts fall into it --
+			-- which is what happened in 2.0.16, and why the new setting appeared to do nothing.
+			return "ava"
 		elseif GetMapType() == MAPTYPE_SUBZONE then
 			return "subzone"
-		elseif MAP_CONTENT_AVA and contentType == MAP_CONTENT_AVA then
-			-- Checked after the subzone test on purpose. An Imperial City district is a
-			-- subzone and keeps the subzone setting; what lands here is the map that is AvA
-			-- and not a subzone -- Cyrodiil and the Imperial City overview -- which is neither
-			-- an ordinary outdoor zone nor a small interior and reads badly at either number.
-			return "ava"
 		end
 		return "outdoor"
 	end

@@ -554,6 +554,28 @@ function addon:SetDormant(value)
 		if self.orgAllowPanPastMapEdge ~= nil then
 			self:SetAllowPanPastMapEdge(self.orgAllowPanPastMapEdge)
 		end
+
+		-- Give the zoom range back, or the standard map inherits the minimap's.
+		--
+		-- The range we install is deliberately narrow and usually has min == max, because the
+		-- minimap is meant to sit at one zoom. The game only recomputes its own range in
+		-- ZO_MapPanAndZoom:InitializeMap, which runs when a map is loaded -- not when the world
+		-- map is opened. So nothing was undoing ours, and the full map could barely be zoomed
+		-- at all until the player crossed into a different map.
+		--
+		-- Recomputed exactly the way InitializeMap does it, and any custom range is dropped
+		-- first since that sits above this one.
+		local panZoom = self.panZoom
+		if panZoom then
+			if ZO_WorldMap_ClearCustomZoomLevels then
+				ZO_WorldMap_ClearCustomZoomLevels()
+			elseif panZoom.ClearCustomZoomMimMax then
+				panZoom:ClearCustomZoomMimMax()
+			end
+			if panZoom.SetMapZoomMinMax and panZoom.ComputeMinZoom and panZoom.ComputeMaxZoom then
+				panZoom:SetMapZoomMinMax(panZoom:ComputeMinZoom(), panZoom:ComputeMaxZoom())
+			end
+		end
 		if self.ApplyLiteAlpha then
 			self:ApplyLiteAlpha()
 		end
@@ -2581,6 +2603,9 @@ function addon:Initialize()
 		-- two and a half times more magnified than the value that reads comfortably on the
 		-- small subzone maps.
 		liteScaleBattleground = 0.3,
+		-- Cyrodiil and the Imperial City overview: larger than an interior, smaller and far
+		-- denser than an ordinary outdoor zone. A starting point rather than a measured value.
+		liteScaleAva = 0.6,
 		bgScaleRetuned = false,
 		zoom = 1.3,
 		mountedZoom = 1,
@@ -3530,6 +3555,12 @@ function addon:Initialize()
 			return "dungeon"
 		elseif GetMapType() == MAPTYPE_SUBZONE then
 			return "subzone"
+		elseif MAP_CONTENT_AVA and contentType == MAP_CONTENT_AVA then
+			-- Checked after the subzone test on purpose. An Imperial City district is a
+			-- subzone and keeps the subzone setting; what lands here is the map that is AvA
+			-- and not a subzone -- Cyrodiil and the Imperial City overview -- which is neither
+			-- an ordinary outdoor zone nor a small interior and reads badly at either number.
+			return "ava"
 		end
 		return "outdoor"
 	end
@@ -3549,6 +3580,8 @@ function addon:Initialize()
 			return clamp(account.liteScaleDungeon or account.liteScale)
 		elseif context == "subzone" then
 			return clamp(account.liteScaleSubZone or account.liteScale)
+		elseif context == "ava" then
+			return clamp(account.liteScaleAva or account.liteScale)
 		end
 		return clamp(account.liteScale)
 	end

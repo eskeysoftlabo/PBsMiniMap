@@ -619,8 +619,16 @@ function addon:SetDormant(value)
 		-- Recomputing the game's own min and max is kept either way. It is what InitializeMap
 		-- does, our narrow range has to go regardless, and a custom range sits above it, so a
 		-- view that installed one is unaffected.
-		local playerOpenedIt = not (WORLD_MAP_MANAGER and WORLD_MAP_MANAGER.inSpecialMode)
-			and not IsWorldMapShownElsewhere()
+		--
+		-- "The player opened it" is the map scene itself in front, not in a special mode. It
+		-- used to be "not shown elsewhere", which is true for the map scene as well -- that
+		-- test asks whether the scene on screen is one of the HUD scenes, and the full map's
+		-- own scene is not -- so this was false on every opening, and the centring below had
+		-- not run once since it was added. A view the game opens for itself is still excluded:
+		-- the antiquity map sits in a scene of its own, where IsWorldMapInFront reads false,
+		-- and the wayshrine map is a special mode.
+		local playerOpenedIt = IsWorldMapInFront()
+			and not (WORLD_MAP_MANAGER and WORLD_MAP_MANAGER.inSpecialMode)
 
 		local panZoom = self.panZoom
 		if panZoom then

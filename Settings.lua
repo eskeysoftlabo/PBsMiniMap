@@ -18,7 +18,7 @@ function addon:InitSettings()
 	settings.author = self.author
 	settings.version = self.version
 
-	-- Credit to the add-on this one is based on, kept out of the author field so that stays
+	-- Credit to the add-on that inspired this one, kept out of the author field so that stays
 	-- the actual author of this version.
 	local creditSetting =
 		settings:AddSetting(

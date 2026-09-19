@@ -1,15 +1,16 @@
 ﻿-- PB's MiniMap
 -- Author: PinkBanther
 --
--- Based on "Votan's Minimap" by votan (https://www.esoui.com/downloads/info1399-VotansMinimap.html),
--- with thanks. The original idea -- reuse the game's own world map as a minimap rather than
--- drawing a second one -- is votan's, and much of the map handling here still comes from it.
+-- Inspired by "Votan's Minimap" by votan (https://www.esoui.com/downloads/info1399-VotansMinimap.html),
+-- with thanks. The idea -- reuse the game's own world map as a minimap rather than drawing a
+-- second one -- is votan's. This add-on started from that code and has since been rewritten;
+-- a few small pieces still trace back to it.
 --
--- This version is reworked for console (PS5/Xbox Series), where all add-ons share a 100MB
--- memory pool. The original's InitMiniMap layer exhausts that pool as soon as the standard
--- map is zoomed out to all of Tamriel, so the default configuration here (init level 2) skips
--- it entirely and instead parks the game's own map window on the HUD at a chosen size and
--- position, handing it straight back when the full map is opened.
+-- Written for console (PS5/Xbox Series), where all add-ons share a 100MB memory pool. The
+-- original's InitMiniMap layer exhausts that pool as soon as the standard map is zoomed out to
+-- all of Tamriel; that layer is not part of this add-on. Instead the game's own map window is
+-- parked on the HUD at a chosen size and position, and handed straight back when the full map
+-- is opened.
 
 if PBS_MINIMAP then
 	return

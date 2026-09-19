@@ -628,61 +628,67 @@ function addon:SetDormant(value)
 		-- not run once since it was added. A view the game opens for itself is still excluded:
 		-- the antiquity map sits in a scene of its own, where IsWorldMapInFront reads false,
 		-- and the wayshrine map is a special mode.
-		local playerOpenedIt = IsWorldMapInFront()
-			and not (WORLD_MAP_MANAGER and WORLD_MAP_MANAGER.inSpecialMode)
+		-- Which views get the step the game would have run when the map came up.
+		--
+		-- The game lays the full map out, zooms and centres it from WORLD_MAP_FRAGMENT's SHOWING
+		-- state. The minimap keeps that fragment on the HUD, so opening the map never makes it
+		-- start showing and none of that runs; what follows stands in for it.
+		--
+		-- That is right for the map the player opens, and for the two travel maps, which the
+		-- game opens with PushSpecialMode followed by ZO_WorldMap_ShowWorldMap and then relies
+		-- on that same showing step to centre -- leaving them out is why the wayshrine map came
+		-- up away from the player. It is wrong for a view that sets itself up afterwards: the
+		-- antiquity map zooms and places its own view (and sits in a scene of its own, where
+		-- IsWorldMapInFront reads false), so it and any other special mode are left alone.
+		local inSpecialMode = WORLD_MAP_MANAGER and WORLD_MAP_MANAGER.inSpecialMode
+		local mapMode = WORLD_MAP_MANAGER and WORLD_MAP_MANAGER.GetMode and WORLD_MAP_MANAGER:GetMode()
+		local travelMap = inSpecialMode and mapMode ~= nil
+			and (mapMode == MAP_MODE_FAST_TRAVEL or mapMode == MAP_MODE_KEEP_TRAVEL)
+		local playerFacing = IsWorldMapInFront() and (not inSpecialMode or travelMap)
 
 		local panZoom = self.panZoom
 		if panZoom then
-			if playerOpenedIt then
+			if playerFacing then
+				-- The game never installs a custom zoom range itself; one left here is ours or
+				-- another add-on's, and it sits above the range recomputed below.
 				if ZO_WorldMap_ClearCustomZoomLevels then
 					ZO_WorldMap_ClearCustomZoomLevels()
 				elseif panZoom.ClearCustomZoomMimMax then
 					panZoom:ClearCustomZoomMimMax()
 				end
+
+				-- Lay the map out at its real size first; everything after reads it.
+				--
+				-- Standing down writes back the layout captured at login, which is not the one
+				-- the map needs now. SetCurrentNormalizedZoomInternal at the current zoom is the
+				-- game's own route to SetMapWindowSize, which sizes the window and scroll the way
+				-- the full map wants them (on gamepad it uses the gamepad dimensions and ignores
+				-- what is passed).
+				--
+				-- Two things read that size. ComputeMaxZoom divides by ZO_WorldMapScroll's height,
+				-- so the range below came out wrong from the stale scroll -- and a maximum of 1
+				-- equals the minimum, which the gamepad map treats as "cannot zoom" and answers a
+				-- zoom press by navigating to the next map level instead: the level changing by
+				-- itself on the wayshrine map. And JumpToPin multiplies by the scroll's width to
+				-- place the player, so a stale scroll put the player off-centre.
+				if panZoom.SetCurrentNormalizedZoomInternal and panZoom.GetCurrentNormalizedZoom then
+					panZoom:SetCurrentNormalizedZoomInternal(panZoom:GetCurrentNormalizedZoom())
+				end
 			end
+
+			-- Give the zoom range back, recomputed the way InitializeMap does it. Kept for every
+			-- view: our narrow range has to go regardless, and a custom range sits above it.
 			if panZoom.SetMapZoomMinMax and panZoom.ComputeMinZoom and panZoom.ComputeMaxZoom then
 				panZoom:SetMapZoomMinMax(panZoom:ComputeMinZoom(), panZoom:ComputeMaxZoom())
 			end
 
-			-- And put the view back on the player.
-			--
-			-- The offset is left wherever the minimap had it, which is centred on the player
-			-- but at the minimap's zoom, and often outside the map edge -- the minimap runs
-			-- with SetAllowPanPastMapEdge on so the player can stay centred at a border. Handed
-			-- to the full map at its own zoom that lands somewhere arbitrary, so the map opens
-			-- looking at the wrong place.
-			--
-			-- InitializeMap clears the pending offset before it recomputes; do the same, then
-			-- move to the player through the game's own helper rather than computing an offset
-			-- here, for the reasons in ReclampLiteMapView.
-			if playerOpenedIt then
+			-- Then centre exactly the way the game does when the map is shown: the player's own
+			-- map, at the current zoom, and nothing at all if the player picked a different map
+			-- themselves. The pending offset is cleared first, as InitializeMap does.
+			if playerFacing then
 				if panZoom.ClearTargetOffset then
 					panZoom:ClearTargetOffset()
 				end
-
-				-- Lay the map out at its real size before asking where the player is on it.
-				--
-				-- JumpToPin works out the offset first and applies the zoom second, and the
-				-- offset is the normalized distance multiplied by ZO_WorldMapScroll:GetWidth()
-				-- at that moment. Right after the minimap layout is handed back, the scroll is
-				-- still minimap-sized, so the offset came out a fraction of what it should be and
-				-- the full map opened well away from the player. The zoom step that follows does
-				-- re-lay the map out, but only after the offset has already been computed.
-				--
-				-- SetCurrentNormalizedZoomInternal at the current zoom is the game's own route to
-				-- SetMapWindowSize, which sizes the window and scroll the way the full map wants
-				-- them (on gamepad it uses the gamepad dimensions and ignores what is passed).
-				if panZoom.SetCurrentNormalizedZoomInternal and panZoom.GetCurrentNormalizedZoom then
-					panZoom:SetCurrentNormalizedZoomInternal(panZoom:GetCurrentNormalizedZoom())
-				end
-
-				-- Then centre exactly the way the game does when the map is shown.
-				--
-				-- The game centres from WORLD_MAP_FRAGMENT's SHOWING state. The minimap keeps that
-				-- fragment on the HUD, so opening the map never makes it "start showing" and that
-				-- step never runs; this stands in for it. It keeps the current zoom, where
-				-- ZO_WorldMap_JumpToPlayer forced the map to maximum zoom, and it leaves the view
-				-- alone if the player picked a different map themselves.
 				if panZoom.OnWorldMapShowing then
 					panZoom:OnWorldMapShowing()
 				elseif ZO_WorldMap_JumpToPlayer then

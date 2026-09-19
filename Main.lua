@@ -615,6 +615,93 @@ function addon:RunMapShowingStep()
 	end
 end
 
+-- Recording how the full map settles after it opens.
+--
+-- The first wayshrine map after a UI reload does not come up centred, and two fixes built on
+-- reasoning about it have not changed that. This measures it instead. From the moment the
+-- add-on stands down for a map it records, every frame for three seconds, where the player
+-- marker sits relative to the middle of the view and everything the centring depends on --
+-- only when something changes, so a settled map adds no lines. The first opening after a load
+-- is kept as well as the latest, so a failing opening and a working one can be read side by
+-- side. It costs nothing outside those three seconds, and the settings button prints it.
+local function DescribeMapView(addon)
+	local panZoom = addon.panZoom
+	local sw, sh, scx, scy = 0, 0, 0, 0
+	if ZO_WorldMapScroll then
+		sw, sh = ZO_WorldMapScroll:GetDimensions()
+		scx, scy = ZO_WorldMapScroll:GetCenter()
+	end
+	local ox, oy = 0, 0
+	if ZO_WorldMapContainer and ZO_WorldMapContainer.GetAnchor then
+		local _, _, _, _, ax, ay = ZO_WorldMapContainer:GetAnchor(0)
+		ox, oy = ax or 0, ay or 0
+	end
+	local pin = addon.pinManager and addon.pinManager:GetPlayerPin()
+	local control = pin and pin:GetControl()
+	local pinText = "pin=missing"
+	if control then
+		local px, py = control:GetCenter()
+		pinText = string.format("pin=%d,%d%s", zo_round((px or 0) - (scx or 0)), zo_round((py or 0) - (scy or 0)),
+			control:IsHidden() and "(hidden)" or "")
+	end
+	return string.format("scroll=%dx%d z=%.2f rng=%.2f-%.2f ofs=%d,%d %s tgt=%s init=%s jump=%s re=%d",
+		zo_round(sw or 0), zo_round(sh or 0),
+		panZoom and panZoom.currentNormalizedZoom or -1,
+		panZoom and panZoom.minZoom or -1, panZoom and panZoom.maxZoom or -1,
+		zo_round(ox), zo_round(oy), pinText,
+		panZoom and panZoom.HasTargetOffset and panZoom:HasTargetOffset() and "Y" or "n",
+		panZoom and panZoom.pendingInitializeMap and "Y" or "n",
+		panZoom and panZoom.pendingJumpToPin and "Y" or "n",
+		addon.lateRecentres or 0)
+end
+
+function addon:BeginMapOpenTrace(header, before)
+	local now = GetFrameTimeMilliseconds()
+	local trace = {startMs = now, untilMs = now + 3000, lines = {header, "before: " .. before}}
+	self.mapOpenTrace = trace
+	if not self.firstMapOpenTrace then
+		self.firstMapOpenTrace = trace
+	end
+	self.lastMapOpenTrace = trace
+	EVENT_MANAGER:RegisterForUpdate(self.name .. "MapOpenTrace", 0, function()
+		self:SampleMapOpenTrace()
+	end)
+	self:SampleMapOpenTrace()
+end
+
+function addon:SampleMapOpenTrace()
+	local trace = self.mapOpenTrace
+	local now = GetFrameTimeMilliseconds()
+	if not trace or now > trace.untilMs or #trace.lines >= 40 then
+		self.mapOpenTrace = nil
+		EVENT_MANAGER:UnregisterForUpdate(self.name .. "MapOpenTrace")
+		return
+	end
+	local body = DescribeMapView(self)
+	if body ~= trace.lastBody then
+		trace.lastBody = body
+		trace.lines[#trace.lines + 1] = string.format("t=%d %s", now - trace.startMs, body)
+	end
+end
+
+function addon:PrintMapOpenTrace()
+	local first, last = self.firstMapOpenTrace, self.lastMapOpenTrace
+	if not first then
+		d(GetString(SI_PBSMINIMAP_MAP_OPEN_TRACE_EMPTY))
+		return
+	end
+	d(string.format("[PBsMiniMap] v%s first opening after load:", tostring(self.version)))
+	for i = 1, #first.lines do
+		d("  " .. first.lines[i])
+	end
+	if last and last ~= first then
+		d("[PBsMiniMap] latest opening:")
+		for i = 1, #last.lines do
+			d("  " .. last.lines[i])
+		end
+	end
+end
+
 function addon:ArmLateRecentre()
 	self.lateRecentreUntil = GetFrameTimeMilliseconds() + 1000
 	self.lateRecentres = 0
@@ -719,6 +806,12 @@ function addon:SetDormant(value)
 			and (mapMode == MAP_MODE_FAST_TRAVEL or mapMode == MAP_MODE_KEEP_TRAVEL)
 		local playerFacing = IsWorldMapInFront() and (not inSpecialMode or travelMap)
 
+		local traceBefore = DescribeMapView(self)
+		local traceHeader = string.format("mode=%s special=%s front=%s elsewhere=%s facing=%s chose=%s",
+			tostring(mapMode), inSpecialMode and "Y" or "n", IsWorldMapInFront() and "Y" or "n",
+			IsWorldMapShownElsewhere() and "Y" or "n", playerFacing and "Y" or "n",
+			ZO_WorldMap_DidPlayerChooseCurrentMap and ZO_WorldMap_DidPlayerChooseCurrentMap() and "Y" or "n")
+
 		local panZoom = self.panZoom
 		if panZoom then
 			if playerFacing then
@@ -771,6 +864,7 @@ function addon:SetDormant(value)
 				self:ArmLateRecentre()
 			end
 		end
+		self:BeginMapOpenTrace(traceHeader, traceBefore)
 		if self.ApplyLiteAlpha then
 			self:ApplyLiteAlpha()
 		end

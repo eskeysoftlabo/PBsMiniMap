@@ -568,6 +568,78 @@ end
 -- drives the same scenes this add-on listens to. Polling the same answer the diagnostics print
 -- means dormancy can never silently fail to engage.
 local dormant = false
+-- Centre again if the full map's layout moves under us right after it opened.
+--
+-- The gamepad map sizes itself from the controls around it: the tooltip panel's left edge,
+-- the info panel's right edge, the keybind strip's height. The first time the map scene is
+-- shown after a UI reload, those are not all in their final place when the centring runs, and
+-- the game lays the map out again a moment later. The centring works in pixels, so the view
+-- was left where the old layout put the player: off-centre on the first opening, correct on
+-- every one after.
+--
+-- Which of those controls is late has not been measured, so this does not depend on it. For
+-- a second after the map opens, if the scroll's size or the zoom range the game would compute
+-- has changed since the centring, the showing step runs again. Neither changes when the
+-- player pans or zooms, so this never fights the player; a map the player picked themselves
+-- is still left alone by OnWorldMapShowing. At most three repeats, and only while dormant.
+local function MapLayoutSignature(panZoom)
+	local w, h = 0, 0
+	if ZO_WorldMapScroll then
+		w, h = ZO_WorldMapScroll:GetDimensions()
+	end
+	local maxZoom = 0
+	if panZoom and panZoom.ComputeMaxZoom then
+		maxZoom = panZoom:ComputeMaxZoom() or 0
+	end
+	return zo_round(w or 0), zo_round(h or 0), maxZoom
+end
+
+function addon:RunMapShowingStep()
+	local panZoom = self.panZoom
+	if not panZoom then
+		return
+	end
+	if panZoom.SetCurrentNormalizedZoomInternal and panZoom.GetCurrentNormalizedZoom then
+		panZoom:SetCurrentNormalizedZoomInternal(panZoom:GetCurrentNormalizedZoom())
+	end
+	if panZoom.SetMapZoomMinMax and panZoom.ComputeMinZoom and panZoom.ComputeMaxZoom then
+		panZoom:SetMapZoomMinMax(panZoom:ComputeMinZoom(), panZoom:ComputeMaxZoom())
+	end
+	if panZoom.ClearTargetOffset then
+		panZoom:ClearTargetOffset()
+	end
+	if panZoom.OnWorldMapShowing then
+		panZoom:OnWorldMapShowing()
+	elseif ZO_WorldMap_JumpToPlayer then
+		ZO_WorldMap_JumpToPlayer()
+	end
+end
+
+function addon:ArmLateRecentre()
+	self.lateRecentreUntil = GetFrameTimeMilliseconds() + 1000
+	self.lateRecentres = 0
+	self.lateRecentreW, self.lateRecentreH, self.lateRecentreMax = MapLayoutSignature(self.panZoom)
+end
+
+function addon:UpdateLateRecentre()
+	local untilMs = self.lateRecentreUntil
+	if not untilMs then
+		return
+	end
+	if not self.dormant or GetFrameTimeMilliseconds() > untilMs or (self.lateRecentres or 0) >= 3 then
+		self.lateRecentreUntil = nil
+		return
+	end
+	local w, h, maxZoom = MapLayoutSignature(self.panZoom)
+	if w == self.lateRecentreW and h == self.lateRecentreH and zo_abs(maxZoom - (self.lateRecentreMax or 0)) < 0.001 then
+		return
+	end
+	self.lateRecentres = (self.lateRecentres or 0) + 1
+	self:RunMapShowingStep()
+	-- The step lays the map out itself, so measure after it, not before.
+	self.lateRecentreW, self.lateRecentreH, self.lateRecentreMax = MapLayoutSignature(self.panZoom)
+end
+
 function addon:SetDormant(value)
 	if dormant == value then
 		return
@@ -582,6 +654,7 @@ function addon:SetDormant(value)
 		self:RestoreLitePlayerPinDrawLevel()
 		-- The standard map owns the window now, so nothing of ours is waiting to settle.
 		self.settleTicks = 0
+		self.lateRecentreUntil = nil
 
 		-- Stop everything we own: swap our hooks back out, then detach the minimap itself so the
 		-- game owns the World Map outright. The memory watch deliberately keeps running.
@@ -694,6 +767,8 @@ function addon:SetDormant(value)
 				elseif ZO_WorldMap_JumpToPlayer then
 					ZO_WorldMap_JumpToPlayer()
 				end
+				-- And watch for the layout moving underneath it (see ArmLateRecentre).
+				self:ArmLateRecentre()
 			end
 		end
 		if self.ApplyLiteAlpha then
@@ -2871,6 +2946,9 @@ local function InitMemoryWatchdog()
 		-- and the whole point is to show the map the moment it is right.
 		if addon.UpdateLiteSettle then
 			addon:UpdateLiteSettle()
+		end
+		if addon.UpdateLateRecentre then
+			addon:UpdateLateRecentre()
 		end
 
 		if not account.debug then

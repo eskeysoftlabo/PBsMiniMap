@@ -803,6 +803,27 @@ function addon:SetDormant(value)
 			self.panZoom:ClearCustomZoomMimMax()
 		end
 
+		-- Do what the game does when the map window hides, when there is something to undo.
+		--
+		-- The game remembers that the player picked a map themselves -- navigated to another
+		-- level, showed a quest or a keep on the map, scried an antiquity -- and while that is
+		-- set, opening the map leaves the view where it was instead of centring on the player.
+		-- The one place it is cleared is ZO_WorldMap_OnHide, the map window's OnHide handler:
+		-- closing the full map hides the window, and the next opening starts from the player.
+		--
+		-- This add-on keeps that window on the HUD, so closing the full map no longer hides it.
+		-- The flag stayed set until the player happened to open a menu -- which does hide the
+		-- window -- and until then every opening skipped the centring. Hence "now and then".
+		--
+		-- So run the game's own handler at the point the window would have hidden. Only when
+		-- the flag is actually set: the handler also ends the travel interactions and closes
+		-- out a dig-site reveal, which is what the game does on every close, but there is no
+		-- reason to do any of it when nothing needs undoing. Called before the special mode is
+		-- popped below, because the handler decides what to close by the current mode.
+		if ZO_WorldMap_OnHide and ZO_WorldMap_DidPlayerChooseCurrentMap and ZO_WorldMap_DidPlayerChooseCurrentMap() then
+			ZO_WorldMap_OnHide()
+		end
+
 		-- Close out a fast-travel session properly.
 		--
 		-- Opening the map from a wayshrine puts the map manager into a special mode and starts

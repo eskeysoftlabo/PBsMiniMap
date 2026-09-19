@@ -594,6 +594,23 @@ local function MapLayoutSignature(panZoom)
 	return zo_round(w or 0), zo_round(h or 0), maxZoom
 end
 
+-- Drop the gamepad map's sticky pin before centring.
+--
+-- With the stick at rest, the gamepad map pans to whichever pin sits nearest the reticle, and
+-- that choice is made every frame from where the view was on the frame before. When the
+-- centring lands late -- held back until the map finishes initialising, which the first
+-- opening after a UI reload does -- the pin chosen on the frame before it landed is one near
+-- the old, off-centre view. The very next frame the map pans to it, and once a pan is under way
+-- it runs to the end: measured, the view centred at 201ms and slid back off the player over
+-- the next second and a half. Clearing it here means nothing stale is left to pan to; the map
+-- picks a new one around the player on its next frame, exactly as it does on a normal opening.
+local function ClearStickyPin(panZoom)
+	local sticky = ZO_WorldMap_GetStickyPin and ZO_WorldMap_GetStickyPin()
+	if sticky and sticky.ClearStickyPin and panZoom then
+		sticky:ClearStickyPin(panZoom)
+	end
+end
+
 function addon:RunMapShowingStep()
 	local panZoom = self.panZoom
 	if not panZoom then
@@ -605,6 +622,7 @@ function addon:RunMapShowingStep()
 	if panZoom.SetMapZoomMinMax and panZoom.ComputeMinZoom and panZoom.ComputeMaxZoom then
 		panZoom:SetMapZoomMinMax(panZoom:ComputeMinZoom(), panZoom:ComputeMaxZoom())
 	end
+	ClearStickyPin(panZoom)
 	if panZoom.ClearTargetOffset then
 		panZoom:ClearTargetOffset()
 	end
@@ -644,7 +662,8 @@ local function DescribeMapView(addon)
 		pinText = string.format("pin=%d,%d%s", zo_round((px or 0) - (scx or 0)), zo_round((py or 0) - (scy or 0)),
 			control:IsHidden() and "(hidden)" or "")
 	end
-	return string.format("scroll=%dx%d z=%.2f rng=%.2f-%.2f ofs=%d,%d %s tgt=%s init=%s jump=%s re=%d",
+	local sticky = ZO_WorldMap_GetStickyPin and ZO_WorldMap_GetStickyPin()
+	return string.format("scroll=%dx%d z=%.2f rng=%.2f-%.2f ofs=%d,%d %s tgt=%s init=%s jump=%s sticky=%s re=%d",
 		zo_round(sw or 0), zo_round(sh or 0),
 		panZoom and panZoom.currentNormalizedZoom or -1,
 		panZoom and panZoom.minZoom or -1, panZoom and panZoom.maxZoom or -1,
@@ -652,6 +671,7 @@ local function DescribeMapView(addon)
 		panZoom and panZoom.HasTargetOffset and panZoom:HasTargetOffset() and "Y" or "n",
 		panZoom and panZoom.pendingInitializeMap and "Y" or "n",
 		panZoom and panZoom.pendingJumpToPin and "Y" or "n",
+		sticky and sticky.GetStickyPin and sticky:GetStickyPin() and "Y" or "n",
 		addon.lateRecentres or 0)
 end
 
@@ -702,10 +722,25 @@ function addon:PrintMapOpenTrace()
 	end
 end
 
+-- Watched every frame rather than on the 50ms timer: once a stale sticky pan has started it
+-- runs to the end, so catching the moment a few frames late already shows as a slide. The
+-- window is two seconds because the centring can be held back for a while on the first
+-- opening after a reload; nothing in it reacts to the player's own input.
 function addon:ArmLateRecentre()
-	self.lateRecentreUntil = GetFrameTimeMilliseconds() + 1000
+	self.lateRecentreUntil = GetFrameTimeMilliseconds() + 2000
 	self.lateRecentres = 0
 	self.lateRecentreW, self.lateRecentreH, self.lateRecentreMax = MapLayoutSignature(self.panZoom)
+	-- A centring asked for while the map is still initialising is held back and applied later
+	-- by the game; that later moment is one to centre again at (see ClearStickyPin).
+	self.lateRecentreHeldBack = self.panZoom and self.panZoom.pendingInitializeMap and true or false
+	EVENT_MANAGER:RegisterForUpdate(self.name .. "LateRecentre", 0, function()
+		self:UpdateLateRecentre()
+	end)
+end
+
+function addon:StopLateRecentre()
+	self.lateRecentreUntil = nil
+	EVENT_MANAGER:UnregisterForUpdate(self.name .. "LateRecentre")
 end
 
 function addon:UpdateLateRecentre()
@@ -714,12 +749,18 @@ function addon:UpdateLateRecentre()
 		return
 	end
 	if not self.dormant or GetFrameTimeMilliseconds() > untilMs or (self.lateRecentres or 0) >= 3 then
-		self.lateRecentreUntil = nil
+		self:StopLateRecentre()
 		return
 	end
-	local w, h, maxZoom = MapLayoutSignature(self.panZoom)
-	if w == self.lateRecentreW and h == self.lateRecentreH and zo_abs(maxZoom - (self.lateRecentreMax or 0)) < 0.001 then
+	local panZoom = self.panZoom
+	local landed = self.lateRecentreHeldBack and not (panZoom and panZoom.pendingInitializeMap)
+	local w, h, maxZoom = MapLayoutSignature(panZoom)
+	local moved = w ~= self.lateRecentreW or h ~= self.lateRecentreH or zo_abs(maxZoom - (self.lateRecentreMax or 0)) >= 0.001
+	if not landed and not moved then
 		return
+	end
+	if landed then
+		self.lateRecentreHeldBack = false
 	end
 	self.lateRecentres = (self.lateRecentres or 0) + 1
 	self:RunMapShowingStep()
@@ -741,7 +782,7 @@ function addon:SetDormant(value)
 		self:RestoreLitePlayerPinDrawLevel()
 		-- The standard map owns the window now, so nothing of ours is waiting to settle.
 		self.settleTicks = 0
-		self.lateRecentreUntil = nil
+		self:StopLateRecentre()
 
 		-- Stop everything we own: swap our hooks back out, then detach the minimap itself so the
 		-- game owns the World Map outright. The memory watch deliberately keeps running.
@@ -852,6 +893,7 @@ function addon:SetDormant(value)
 			-- map, at the current zoom, and nothing at all if the player picked a different map
 			-- themselves. The pending offset is cleared first, as InitializeMap does.
 			if playerFacing then
+				ClearStickyPin(panZoom)
 				if panZoom.ClearTargetOffset then
 					panZoom:ClearTargetOffset()
 				end
@@ -3040,9 +3082,6 @@ local function InitMemoryWatchdog()
 		-- and the whole point is to show the map the moment it is right.
 		if addon.UpdateLiteSettle then
 			addon:UpdateLiteSettle()
-		end
-		if addon.UpdateLateRecentre then
-			addon:UpdateLateRecentre()
 		end
 
 		if not account.debug then

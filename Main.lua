@@ -626,6 +626,32 @@ end
 -- 2.2.8-2.2.10 crash when zooming out.
 local PENDING_CENTRE_TICKS = 40 -- 2 seconds at 50ms, then give up
 
+-- The same thing happens when the player changes map level with the map open, and measured on
+-- console it is worse: the first zoom-out to the parent map after a UI reload lands on a pin
+-- near the old view instead of the player.
+--
+--   out   init=Y tex=n zoom=1.00 rng=1.00-2.16 pin=shown ofs=-129,335
+--   +200  init=n tex=Y zoom=1.00 rng=1.00-8.66 pin=shown ofs=-131,189
+--   +600  init=Y tex=Y zoom=1.00 rng=1.00-8.66 pin=shown ofs=-140,-168
+--
+-- The player pin was visible throughout, so the hidden-pin path was not it, and the zoom range
+-- repaired itself. What gives it away is that the zoom never became 0.90: InitializeMap's
+-- navigate branch sets 1 - NAVIGATE_IN_OR_OUT_NORMALIZED_ZOOM_ADJUSTMENT before jumping to the
+-- player, so that branch never ran. The offset meanwhile slid past the centre -- a pan, not a
+-- jump. InitializeMap prefers a pending pan over the navigate branch (worldmap.lua:1023), and
+-- the only thing panning with the stick at rest is the sticky pin: while the map sat waiting
+-- for its texture, MoveToStickyPin called PanToPin, which recorded itself as pendingPanToPin,
+-- and initialisation then honoured that instead of centring on the player.
+--
+-- So a map level change taken while the map is still loading is armed here too, and the same
+-- one-shot ZO_WorldMap_JumpToPlayer tidies it up: StopMotion drops the sticky pin and stops its
+-- pan, then the view goes to the player. Nothing here runs per frame or rebuilds the map.
+function addon:ArmCentreTidyUp()
+	if self.panZoom and self.panZoom.pendingInitializeMap then
+		self.pendingCentreTicks = PENDING_CENTRE_TICKS
+	end
+end
+
 -- Driven from the 50ms watch that already runs, not from a per-frame update, and only while a
 -- centring is known to be held back.
 function addon:UpdatePendingCentre()
@@ -644,6 +670,13 @@ function addon:UpdatePendingCentre()
 		return
 	end
 	self.pendingCentreTicks = nil
+	-- Only where the game would centre on the player itself: it jumps to the player pin when
+	-- that pin is visible, and leaves the view alone when it is not.
+	local pin = self.pinManager and self.pinManager:GetPlayerPin()
+	local control = pin and pin:GetControl()
+	if control and control:IsHidden() then
+		return
+	end
 	-- It has landed. Drop the stale sticky pin, stopping its pan if one has already started,
 	-- and put the view back on the player.
 	if ZO_WorldMap_JumpToPlayer then
@@ -691,8 +724,10 @@ function addon:RecordMapChangeSample(tag)
 		px, py = control:GetCenter()
 	end
 	local x, y, _, shown = GetMapPlayerPosition("player")
+	local stickyHolder = ZO_WorldMap_GetStickyPin and ZO_WorldMap_GetStickyPin()
+	local sticky = stickyHolder and stickyHolder.GetStickyPin and stickyHolder:GetStickyPin()
 	local line = string.format(
-		"%-6s map=%s init=%s tex=%s/%s zoom=%.2f rng=%.2f-%.2f cust=%s pin=%s ofs=%d,%d pos=%.3f,%.3f shown=%s",
+		"%-6s map=%s init=%s tex=%s/%s zoom=%.2f rng=%.2f-%.2f cust=%s pin=%s ofs=%d,%d pos=%.3f,%.3f shown=%s pend=%s sticky=%s",
 		tag, tostring(GetMapName()),
 		panZoom and panZoom.pendingInitializeMap and "Y" or "n",
 		container and container.IsTextureLoaded and (container:IsTextureLoaded() and "Y" or "n") or "?",
@@ -701,7 +736,11 @@ function addon:RecordMapChangeSample(tag)
 		panZoom and panZoom.minZoom or -1, panZoom and panZoom.maxZoom or -1,
 		panZoom and panZoom.customMin and string.format("%.2f-%.2f", panZoom.customMin, panZoom.customMax or -1) or "n",
 		control and (control:IsHidden() and "hidden" or "shown") or "missing",
-		zo_round(px - cx), zo_round(py - cy), x or -1, y or -1, tostring(shown))
+		zo_round(px - cx), zo_round(py - cy), x or -1, y or -1, tostring(shown),
+		-- Which branch InitializeMap will take, and whether the sticky pin is what queued it.
+		panZoom and (panZoom.pendingJumpToPin and "jump" or panZoom.pendingPanToPin and "pan"
+			or panZoom.pendingPanToNormalizedPosition and "panPos" or "n") or "?",
+		sticky and (sticky == (panZoom and panZoom.pendingPanToPin) and "queued" or "Y") or "n")
 	trace[#trace + 1] = line
 	if #trace > MAP_CHANGE_TRACE_MAX then
 		table.remove(trace, 1)
@@ -3089,6 +3128,7 @@ local function InitMemoryWatchdog()
 			-- between map levels there, not for walking across a zone border.
 			if addon.dormant then
 				addon:ArmMapChangeTrace(wasNavigateIn)
+				addon:ArmCentreTidyUp()
 			end
 			Emit("map changed: " .. tostring(GetMapName()))
 		end

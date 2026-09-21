@@ -452,7 +452,6 @@ function addon:InitSettings()
 		clickHandler = function() self:PrintLitePlayerPinDiagnostic() end,
 	})
 
-
 	-- Continuous verbose logging remains locked; the button above reports only the last HUD sample.
 	settings:AddSetting(
 		{

@@ -452,15 +452,6 @@ function addon:InitSettings()
 		clickHandler = function() self:PrintLitePlayerPinDiagnostic() end,
 	})
 
-	-- 2.2.15 diagnostic: which of the two ways the game has of landing on the map's centre
-	-- instead of the player is the one happening on the first zoom-out after a UI reload.
-	settings:AddSetting({
-		type = LibHarvensAddonSettings.ST_BUTTON,
-		label = GetString(SI_PBSMINIMAP_MAP_CHANGE_TRACE),
-		buttonText = GetString(SI_PBSMINIMAP_MAP_CHANGE_TRACE),
-		tooltip = GetString(SI_PBSMINIMAP_MAP_CHANGE_TRACE_TOOLTIP),
-		clickHandler = function() self:PrintMapChangeTrace() end,
-	})
 
 	-- Continuous verbose logging remains locked; the button above reports only the last HUD sample.
 	settings:AddSetting(

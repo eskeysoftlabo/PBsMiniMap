@@ -2,9 +2,6 @@
 local strings = {
 	SI_PBSMINIMAP_PIN_DIAGNOSTIC = "現在位置カーソルの診断",
 	SI_PBSMINIMAP_PIN_DIAGNOSTIC_TOOLTIP = "直前のミニマップのカーソル状態をチャットに出力します。カーソルが消えたら、全画面マップを開かずに設定へ進み、このボタンを押してください。",
-	SI_PBSMINIMAP_MAP_OPEN_TRACE = "マップ表示の記録",
-	SI_PBSMINIMAP_MAP_OPEN_TRACE_TOOLTIP = "マップを開いた時に、表示が落ち着くまでの状態をチャットに出力します。UIリロード後に最初に開いた回と、直近に開いた回の2つです。UIをリロードし、マップを開くか祠を使って閉じてから押してください。",
-	SI_PBSMINIMAP_MAP_OPEN_TRACE_EMPTY = "まだマップ表示の記録がありません。",
 	SI_PBSMINIMAP_PIN_DIAGNOSTIC_EMPTY = "まだミニマップの記録がありません。ゲーム画面に数秒戻ってから、設定を開き直してください。",
 	SI_KEYBINDINGS_CATEGORY_PBSMINIMAP = "Mini Map",
 	SI_PBSMINIMAP_MINI_MAP_TOOLTIP = "内蔵マップのミニマップ機能を有効にします",

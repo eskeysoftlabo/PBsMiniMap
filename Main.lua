@@ -653,6 +653,92 @@ function addon:UpdatePendingCentre()
 	end
 end
 
+-- Map-change trace (2.2.15, diagnostic).
+--
+-- The first time the player zooms out to the parent map after a UI reload, the view comes up on
+-- the map's centre instead of the player. The game's own code has two ways to produce exactly
+-- that, and reading it cannot tell them apart:
+--
+--   * ZO_MapPanAndZoom:SetNormalizedZoomAndOffsetInNewMap (worldmap.lua:1003) jumps to the
+--     player pin only when the pin is not hidden, and falls back to SetCurrentOffset(0, 0) --
+--     the map's centre -- when it is. A pin not yet rebuilt on the new map would do it.
+--   * ComputeMaxZoom (977) measures the tile texture, and an unloaded texture makes it return
+--     1, which equals ComputeMinZoom. With no zoom range there is no border to offset into, so
+--     GetNormalizedPositionFocusZoomAndOffset (1266) clamps the offset to zero -- the map's
+--     centre again. We install a range at the moment the map opens, when the texture may still
+--     be loading, which is the same condition that holds the centring back.
+--
+-- Four samples per map change, taken on the 50ms watch that already runs. No per-frame update:
+-- repeating work per frame while the map is open is what crashed 2.2.8-2.2.10.
+local MAP_CHANGE_TRACE_MAX = 32
+local MAP_CHANGE_TRACE_TICKS = 12 -- samples at the change itself, then +50ms, +200ms, +600ms
+
+function addon:RecordMapChangeSample(tag)
+	local panZoom = self.panZoom
+	local trace = self.mapChangeTrace
+	if not trace then
+		trace = {}
+		self.mapChangeTrace = trace
+	end
+	local container = ZO_WorldMapContainer1
+	local pin = self.pinManager and self.pinManager:GetPlayerPin()
+	local control = pin and pin:GetControl()
+	local px, py, cx, cy = 0, 0, 0, 0
+	if ZO_WorldMapScroll then
+		cx, cy = ZO_WorldMapScroll:GetCenter()
+	end
+	if control then
+		px, py = control:GetCenter()
+	end
+	local x, y, _, shown = GetMapPlayerPosition("player")
+	local line = string.format(
+		"%-6s map=%s init=%s tex=%s/%s zoom=%.2f rng=%.2f-%.2f cust=%s pin=%s ofs=%d,%d pos=%.3f,%.3f shown=%s",
+		tag, tostring(GetMapName()),
+		panZoom and panZoom.pendingInitializeMap and "Y" or "n",
+		container and container.IsTextureLoaded and (container:IsTextureLoaded() and "Y" or "n") or "?",
+		container and (container:IsHidden() and "hidden" or "shown") or "?",
+		panZoom and panZoom.currentNormalizedZoom or -1,
+		panZoom and panZoom.minZoom or -1, panZoom and panZoom.maxZoom or -1,
+		panZoom and panZoom.customMin and string.format("%.2f-%.2f", panZoom.customMin, panZoom.customMax or -1) or "n",
+		control and (control:IsHidden() and "hidden" or "shown") or "missing",
+		zo_round(px - cx), zo_round(py - cy), x or -1, y or -1, tostring(shown))
+	trace[#trace + 1] = line
+	if #trace > MAP_CHANGE_TRACE_MAX then
+		table.remove(trace, 1)
+	end
+end
+
+-- Armed when the map level changes while the standard map is in front -- the player zooming
+-- out to the parent map, or in to a subzone.
+function addon:ArmMapChangeTrace(wasNavigateIn)
+	self.mapChangeTraceTicks = MAP_CHANGE_TRACE_TICKS
+	self:RecordMapChangeSample(wasNavigateIn and "in" or "out")
+end
+
+function addon:UpdateMapChangeTrace()
+	local ticks = self.mapChangeTraceTicks
+	if not ticks or ticks <= 0 then
+		self.mapChangeTraceTicks = nil
+		return
+	end
+	self.mapChangeTraceTicks = ticks - 1
+	if ticks == 12 or ticks == 9 or ticks == 1 then
+		self:RecordMapChangeSample("+" .. tostring((MAP_CHANGE_TRACE_TICKS - ticks + 1) * 50))
+	end
+end
+
+function addon:PrintMapChangeTrace()
+	local trace = self.mapChangeTrace
+	if not trace or #trace == 0 then
+		d(GetString(SI_PBSMINIMAP_MAP_CHANGE_TRACE_EMPTY))
+		return
+	end
+	d("[PBsMiniMap] v" .. tostring(self.version))
+	for i = 1, #trace do
+		d("[PBsMiniMap] " .. trace[i])
+	end
+end
+
 local dormant = false
 function addon:SetDormant(value)
 	if dormant == value then
@@ -2956,6 +3042,7 @@ local function InitMemoryWatchdog()
 		end
 
 		addon:UpdatePendingCentre()
+		addon:UpdateMapChangeTrace()
 
 		-- Checked here rather than on the 100ms follow tick: this is the fastest thing running,
 		-- and the whole point is to show the map the moment it is right.
@@ -2997,7 +3084,12 @@ local function InitMemoryWatchdog()
 
 	CALLBACK_MANAGER:RegisterCallback(
 		"OnWorldMapChanged",
-		function()
+		function(wasNavigateIn)
+			-- Only while the standard map is in front: this is for the player navigating
+			-- between map levels there, not for walking across a zone border.
+			if addon.dormant then
+				addon:ArmMapChangeTrace(wasNavigateIn)
+			end
 			Emit("map changed: " .. tostring(GetMapName()))
 		end
 	)

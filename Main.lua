@@ -567,6 +567,75 @@ end
 -- not even registered when the minimap is turned off, and there is no guarantee the console UI
 -- drives the same scenes this add-on listens to. Polling the same answer the diagnostics print
 -- means dormancy can never silently fail to engage.
+-- Drop the gamepad map's sticky pin before centring.
+--
+-- With the stick at rest the gamepad map pans to whichever pin sits nearest the reticle, and it
+-- makes that choice every frame from where the view was on the frame before. A pin picked while
+-- the view was still off the player is therefore acted on one frame later, and once a pan is
+-- under way it runs to the end -- sticky selection is disabled until the target is reached.
+-- Clearing it here leaves nothing stale to pan to: the map picks a new one around the player on
+-- its next frame. Nothing here rebuilds the map; it is a single field on the sticky-pin object.
+local function ClearStickyPin(panZoom)
+	local sticky = ZO_WorldMap_GetStickyPin and ZO_WorldMap_GetStickyPin()
+	if sticky and sticky.ClearStickyPin and panZoom then
+		sticky:ClearStickyPin(panZoom)
+	end
+end
+
+-- Centre the way the game does when the map is shown. The pending offset is cleared first, as
+-- InitializeMap does. Called exactly once per opening -- either straight away, or from the tick
+-- below when the map was still initialising. Running it more than once per opening is what has
+-- to be avoided: it goes on to SetMapToPlayerLocation, which rebuilds the whole map, and doing
+-- that repeatedly from add-on context while the player zooms out is what crashed 2.2.8-2.2.10.
+function addon:CentreStandardMapOnPlayer()
+	local panZoom = self.panZoom
+	if not panZoom then
+		return
+	end
+	ClearStickyPin(panZoom)
+	if panZoom.ClearTargetOffset then
+		panZoom:ClearTargetOffset()
+	end
+	if panZoom.OnWorldMapShowing then
+		panZoom:OnWorldMapShowing()
+	elseif ZO_WorldMap_JumpToPlayer then
+		ZO_WorldMap_JumpToPlayer()
+	end
+end
+
+-- The first opening after a UI reload finds the map still initialising, and a centring asked
+-- for then is not applied: the game holds it back and runs it when initialisation finishes,
+-- about 200ms later. Measured, the view did arrive centred at that moment and then slid back
+-- off the player over the next second and a half -- the sticky pin chosen during those 200ms of
+-- off-centre view being panned to the frame after the held-back centring landed.
+--
+-- So the centring is not repeated, it is postponed: while the map is initialising nothing is
+-- asked for, and the moment it is ready the single centring runs, with the stale sticky pin
+-- dropped immediately before it. Normal openings never take this path at all.
+--
+-- Driven from the 50ms watch that already runs, not from a per-frame update. Initialisation
+-- takes about 200ms, so four samples of headroom; arriving a sample late only moves when the
+-- centring happens, it cannot leave the view off the player.
+local PENDING_CENTRE_TICKS = 40 -- 2 seconds at 50ms, then give up
+
+function addon:UpdatePendingCentre()
+	local ticks = self.pendingCentreTicks
+	if not ticks then
+		return
+	end
+	-- The map was closed again, or we waited long enough that something else is going on.
+	if not self.dormant or ticks <= 0 then
+		self.pendingCentreTicks = nil
+		return
+	end
+	self.pendingCentreTicks = ticks - 1
+	if self.panZoom and self.panZoom.pendingInitializeMap then
+		return
+	end
+	self.pendingCentreTicks = nil
+	self:CentreStandardMapOnPlayer()
+end
+
 local dormant = false
 function addon:SetDormant(value)
 	if dormant == value then
@@ -686,13 +755,13 @@ function addon:SetDormant(value)
 			-- map, at the current zoom, and nothing at all if the player picked a different map
 			-- themselves. The pending offset is cleared first, as InitializeMap does.
 			if playerFacing then
-				if panZoom.ClearTargetOffset then
-					panZoom:ClearTargetOffset()
-				end
-				if panZoom.OnWorldMapShowing then
-					panZoom:OnWorldMapShowing()
-				elseif ZO_WorldMap_JumpToPlayer then
-					ZO_WorldMap_JumpToPlayer()
+				-- Unless the map is still initialising, in which case it is postponed by a
+				-- sample at a time until it is ready (see UpdatePendingCentre).
+				if panZoom.pendingInitializeMap then
+					self.pendingCentreTicks = PENDING_CENTRE_TICKS
+				else
+					self.pendingCentreTicks = nil
+					self:CentreStandardMapOnPlayer()
 				end
 			end
 		end
@@ -717,6 +786,8 @@ function addon:SetDormant(value)
 			end
 		end
 	else
+		-- The map is gone; a postponed centring belongs to it and is dropped with it.
+		self.pendingCentreTicks = nil
 		-- Only of interest with the (locked) debug output on; see the trace window in Check.
 		if self.account and self.account.debug then
 			self.traceTicks = 20
@@ -2866,6 +2937,8 @@ local function InitMemoryWatchdog()
 				addon:SetDormant(false)
 			end
 		end
+
+		addon:UpdatePendingCentre()
 
 		-- Checked here rather than on the 100ms follow tick: this is the fastest thing running,
 		-- and the whole point is to show the map the moment it is right.

@@ -509,6 +509,7 @@ function addon:CaptureLitePlayerPinDiagnostic()
 		background and string.format("texture hidden=%s alpha=%.2f layer=%d level=%d texture=%s",
 			tostring(background:IsHidden()), background:GetAlpha(), background:GetDrawLayer(),
 			background:GetDrawLevel(), tostring(background:GetTextureFileName())) or "texture missing",
+		self.CompassTextureStatus and self:CompassTextureStatus() or "compass not loaded",
 	}
 end
 
@@ -2998,6 +2999,9 @@ local function InitMemoryWatchdog()
 		end
 
 		addon:UpdatePendingCentre()
+		if addon.PollCompassTexture then
+			addon:PollCompassTexture()
+		end
 
 		-- Checked here rather than on the 100ms follow tick: this is the fastest thing running,
 		-- and the whole point is to show the map the moment it is right.

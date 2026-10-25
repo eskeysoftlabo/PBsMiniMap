@@ -22,6 +22,10 @@ function wm:CreateControl(name, parent, kind)
     function frame:SetAnchor(_, relative) self.relative = relative end
     function frame:SetDimensions(w, h) self.width, self.height = w, h end
     function frame:SetHidden(value) self.hidden = value end
+    function frame:IsHidden() return self.hidden == true end
+    function frame:GetTextureFileName() return self.texture end
+    function frame:IsTextureLoaded() return self.loaded == true end
+    function frame:GetTextureFileDimensions() return self.fileSize or 0, self.fileSize or 0 end
     return frame
 end
 local env = setmetatable({PBS_MINIMAP = addon, ZO_WorldMapScroll = scroll, ZO_WorldMap = {},
@@ -75,4 +79,40 @@ assert(header:sub(85, 88) == "DXT5", "not DXT5")
 assert(header:byte(29) > 1, "no mip chain: the frame shimmers when drawn small")
 local manifest = assert(io.open("PBsMiniMap.addon", "rb")):read("a")
 assert(manifest:find(path, 1, true), "the texture is not listed in the manifest")
-print("PASS: compass geometry, settings, clipping restoration, resize and asset reference")
+
+-- The console does not necessarily install the add-on in a folder called PBsMiniMap, which is
+-- why the frame came up empty there while the clip worked. Both roots are tried, and the
+-- texture loads asynchronously, so a candidate is given a moment before the next is tried.
+addon.compassRoots, addon.compassFrame, addon.compassTextureSettled = nil, nil, nil
+addon.account.mapStyle, addon.account.showBorder = "compass", true
+env.GetAddOnManager = function()
+    return {GetNumAddOns = function() return 2 end,
+            GetAddOnInfo = function(_, i) return i == 2 and "PBsMiniMap" or "Other" end,
+            GetAddOnRootDirectoryPath = function() return "AddOns\\PBsMiniMap-1234\\" end}
+end
+addon:ApplyLiteMapStyle()
+assert(frame.texture == "PBsMiniMap/assets/compass-frame.dds", "the PC path is tried first")
+for _ = 1, 9 do addon:PollCompassTexture() end
+assert(frame.texture == "PBsMiniMap/assets/compass-frame.dds", "gave up on the first root too early")
+addon:PollCompassTexture()
+assert(frame.texture == "AddOns/PBsMiniMap-1234/assets/compass-frame.dds",
+    "did not fall back to the folder the game reports: " .. tostring(frame.texture))
+-- Loaded at the file's real size: stop, and never touch it again.
+frame.loaded, frame.fileSize = true, 512
+addon:PollCompassTexture()
+assert(addon.compassTextureSettled, "a loaded texture must settle")
+local settledOn = frame.texture
+for _ = 1, 30 do addon:PollCompassTexture() end
+assert(frame.texture == settledOn, "kept switching after the texture had loaded")
+-- A wrong size is the 1x1 placeholder an unlisted file gives: keep looking.
+addon.compassTextureSettled, frame.fileSize, addon.compassTextureWait = false, 1, 0
+for _ = 1, 10 do addon:PollCompassTexture() end
+assert(frame.texture ~= settledOn, "accepted the engine's placeholder")
+-- Hidden (square style, or the border turned off): nothing to poll.
+frame.hidden = true
+local before = frame.texture
+for _ = 1, 20 do addon:PollCompassTexture() end
+assert(frame.texture == before, "polled a frame that is not on screen")
+assert(addon:CompassTextureStatus():find("compass texture="), "status line for the report")
+
+print("PASS: compass geometry, settings, clipping restoration, resize, texture root fallback")

@@ -62,14 +62,17 @@ addon.account.enableMap = true
 
 addon:CaptureLitePlayerPinDiagnostic()
 local sample = addon.playerPinDiagnostic
-assert(#sample == 4 and sample[3]:find("offset=0.0,0.0", 1, true))
+-- Five lines now: the compass frame's texture state is reported alongside the pin's, since
+-- "the frame is not drawn" is a texture that did not load (see Compass.lua).
+assert(#sample == 5 and sample[3]:find("offset=0.0,0.0", 1, true))
+assert(sample[5]:find("compass", 1, true), "the report must cover the compass texture")
 now = 1500
 addon:CaptureLitePlayerPinDiagnostic()
 assert(addon.playerPinDiagnostic == sample, "limit samples to once per second")
 now = 2000; foreign = true
 addon:CaptureLitePlayerPinDiagnostic()
 addon:PrintLitePlayerPinDiagnostic()
-assert(addon.playerPinDiagnostic == sample and #output == 4, "Settings must report the HUD sample")
+assert(addon.playerPinDiagnostic == sample and #output == 5, "Settings must report the HUD sample")
 foreign = false; hidden = true
 addon:CaptureLitePlayerPinDiagnostic()
 assert(addon.playerPinDiagnostic == sample)

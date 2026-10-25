@@ -41,6 +41,7 @@ Settings live under **PB's MiniMap** (LibHarvensAddonSettings).
 | Setting | Purpose |
 | --- | --- |
 | Mini Map | Master on/off |
+| Map style | Existing rectangular map or circular metal compass; applied immediately |
 | Width / Height | Minimap size (min 20) |
 | Offset X / Offset Y | Position relative to screen centre |
 | Opacity | How solid the minimap is; the full map stays solid |
@@ -58,6 +59,12 @@ Settings live under **PB's MiniMap** (LibHarvensAddonSettings).
 | Re-apply layout | Force the layout to be re-asserted |
 | Report player marker | Print the last HUD marker state to chat for troubleshooting |
 | Debug: log to chat | Print the memory / map-state trail to chat (locked, off by default) |
+
+The circular compass uses the smaller of Width and Height as its diameter, with north at the
+top. **Show border** toggles its engraved N/E/S/W metal bezel. Tiles and pins are clipped to
+the circle; the normal full-screen map keeps its rectangular viewport. Existing settings
+default to the rectangular style. The original frame artwork and the runtime DDS (512×512 DXT5
+with mips, listed in the manifest) are in `assets/`.
 
 > The one remaining debug entry is kept deliberately. Its snapshot line -- anchor, size, hook
 > state, installed and drawn zoom, dormancy flips -- is what turned several rounds of guessing

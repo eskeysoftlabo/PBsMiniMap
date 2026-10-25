@@ -79,10 +79,36 @@ function addon:CompassTextureStatus()
     end
     local loaded = frame.IsTextureLoaded and frame:IsTextureLoaded()
     local width, height = frame:GetTextureFileDimensions()
-    return string.format("compass texture=%s loaded=%s file=%dx%d hidden=%s settled=%s",
+    return string.format("compass texture=%s loaded=%s file=%dx%d hidden=%s settled=%s blackout=%s",
         tostring(frame.GetTextureFileName and frame:GetTextureFileName() or "?"),
         tostring(loaded), width or -1, height or -1,
-        tostring(frame:IsHidden()), tostring(self.compassTextureSettled))
+        tostring(frame:IsHidden()), tostring(self.compassTextureSettled),
+        ZO_WorldMapMapBlackOut and tostring(ZO_WorldMapMapBlackOut:IsHidden()) or "missing")
+end
+
+-- The black square behind the map.
+--
+-- ZO_WorldMapMapBlackOut is a plain 000000 texture anchored across ZO_WorldMapScroll
+-- (worldmap.xml), and it is a *sibling* of that scroll rather than a child, so the circular
+-- clip never touched it: the map came up correctly round with a black square around it.
+-- Nothing in the client's Lua refers to it, so it is simply the backing the map is drawn on.
+--
+-- Hidden while the circle is up and put back exactly as it was afterwards -- the standard map
+-- wants it, and so does the rectangular style.
+local function SetBlackOutHidden(self, hidden)
+    local blackOut = ZO_WorldMapMapBlackOut
+    if not blackOut then return end
+    if hidden then
+        if self.compassBlackOutWas == nil then
+            self.compassBlackOutWas = blackOut:IsHidden()
+        end
+        if not blackOut:IsHidden() then
+            blackOut:SetHidden(true)
+        end
+    elseif self.compassBlackOutWas ~= nil then
+        blackOut:SetHidden(self.compassBlackOutWas)
+        self.compassBlackOutWas = nil
+    end
 end
 
 function addon:ApplyLiteMapStyle()
@@ -99,8 +125,10 @@ function addon:ApplyLiteMapStyle()
             self.compassClipApplied = false
         end
         if self.compassFrame then self.compassFrame:SetHidden(true) end
+        SetBlackOutHidden(self, false)
         return
     end
+    SetBlackOutHidden(self, true)
 
     if not self.compassFrame then
         local frame = WINDOW_MANAGER:CreateControl("PBsMiniMapCompassFrame", ZO_WorldMap, CT_TEXTURE)

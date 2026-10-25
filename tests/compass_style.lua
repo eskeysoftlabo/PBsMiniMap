@@ -28,7 +28,13 @@ function wm:CreateControl(name, parent, kind)
     function frame:GetTextureFileDimensions() return self.fileSize or 0, self.fileSize or 0 end
     return frame
 end
+-- The black backing the map is drawn on: a sibling of the scroll, so the circular clip misses
+-- it and it has to be hidden and put back by hand.
+local blackOut = {hidden = false}
+function blackOut:IsHidden() return self.hidden end
+function blackOut:SetHidden(value) self.hidden = value end
 local env = setmetatable({PBS_MINIMAP = addon, ZO_WorldMapScroll = scroll, ZO_WorldMap = {},
+    ZO_WorldMapMapBlackOut = blackOut,
     WINDOW_MANAGER = wm, CT_TEXTURE = 1, DT_HIGH = 3, DL_OVERLAY = 4, CENTER = 5},
     {__index = _G})
 assert(loadfile("Compass.lua", "t", env))()
@@ -41,6 +47,7 @@ assert(allocations == 0 and not scroll.clip, "existing square style stays unchan
 addon.account.mapStyle = "compass"
 addon:ApplyLiteMapStyle()
 assert(frame.width == 304 and frame.height == 304 and not frame.hidden and not frame.mouse)
+assert(blackOut.hidden, "the black square behind the map must go while the circle is up")
 assert(scroll.clip[1] == 600 and scroll.clip[2] == 400 and scroll.clip[3] == 304 * 0.42)
 assert(frame.parent == env.ZO_WorldMap and frame.relative == scroll, "frame must not be circularly clipped")
 -- A resize: ApplyLiteMinimapLayout re-cuts the circle itself once it has sized the viewport.
@@ -62,6 +69,7 @@ for _, condition in ipairs({"dormant", "full", "foreign", "disabled", "square"})
     else addon.account.mapStyle = "square" end
     addon:ApplyLiteMapStyle()
     assert(not scroll.clip and frame.hidden, condition .. " must restore the full viewport")
+    assert(not blackOut.hidden, condition .. " must put the map's black backing back")
     local clears = scroll.clears
     addon:ApplyLiteMapStyle()
     assert(scroll.clears == clears, "do not repeatedly clear another owner's clipping")

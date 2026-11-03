@@ -30,7 +30,8 @@ stays within the limit.
   opacity.
 - Keeps the player centred, panning the map as you travel, and follows you across zones.
 - Restores the game's default size and position the moment the full map is opened, and
-  re-applies yours when it is closed.
+  re-applies yours when it is closed. The full map opens at the game's own starting zoom (the
+  whole map), not at the minimap's.
 - Live preview while adjusting size and position in the settings panel.
 - Self-healing layout: if anything moves or resizes the window, it is put back within 200 ms.
 

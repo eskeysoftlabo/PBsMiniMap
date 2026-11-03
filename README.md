@@ -86,9 +86,12 @@ The displayed name is fixed in `Main.lua`; the version comes from the manifest. 
 version, edit these two adjacent lines in `PBsMiniMap.addon` and nothing else:
 
 ```
-## Title: PB's MiniMap 2.0.0
-## Version: 2.0.0
+## Title: |cFF69B4PB’s MiniMap|r 2.3.5
+## Version: 2.3.5
 ```
+
+`python3 tools/package.py` then writes `PBsMiniMap.zip` from the files the manifest lists and
+nothing else (tests, artwork sources and reference copies stay out of the upload).
 
 Console builds are distributed through **Bethesda.net**, not ESOUI — use the ZOS Console
 AddOn Uploader. The name shown in the in-game browser comes from the uploader entry, not from

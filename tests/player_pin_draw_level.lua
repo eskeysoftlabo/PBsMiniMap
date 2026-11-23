@@ -61,19 +61,41 @@ assert(control.level == 190, "disable restores the captured level")
 addon.account.enableMap = true
 
 addon:CaptureLitePlayerPinDiagnostic()
-local sample = addon.playerPinDiagnostic
--- Five lines now: the compass frame's texture state is reported alongside the pin's, since
--- "the frame is not drawn" is a texture that did not load (see Compass.lua).
-assert(#sample == 5 and sample[3]:find("offset=0.0,0.0", 1, true))
-assert(sample[5]:find("compass", 1, true), "the report must cover the compass texture")
+local sample = addon.playerPinSample
+assert(sample and sample.t == 1000, "nothing sampled")
+-- Five lines: the compass frame's texture state is reported alongside the pin's, since
+-- "the frame is not drawn" is a texture that did not load (see Compass.lua). The compass part is
+-- absent in this slice, which reports so rather than failing.
+local lines = addon:FormatLitePlayerPinDiagnostic()
+assert(#lines == 5 and lines[3]:find("offset=0.0,0.0", 1, true), tostring(lines[3]))
+assert(lines[5]:find("compass", 1, true), "the report must cover the compass texture")
 now = 1500
 addon:CaptureLitePlayerPinDiagnostic()
-assert(addon.playerPinDiagnostic == sample, "limit samples to once per second")
-now = 2000; foreign = true
+assert(sample.t == 1000, "limit samples to once per second")
+-- The sample is one table for the life of the add-on: steady samples allocate nothing.
+for i = 1, 50 do
+    now = 2000 + i * 1000
+    addon:CaptureLitePlayerPinDiagnostic()
+end
+assert(addon.playerPinSample == sample and sample.t == 52000, "the sample table must be reused")
+-- ESO's Lua does not JIT; LuaJIT's trace recorder allocates on its own and would be counted.
+if jit then jit.off() end
+collectgarbage("collect")
+local before = collectgarbage("count")
+collectgarbage("stop")
+for i = 1, 200 do
+    now = 60000 + i * 1000
+    addon:CaptureLitePlayerPinDiagnostic()
+end
+local grown = collectgarbage("count") - before
+collectgarbage("restart")
+assert(grown < 4, string.format("sampling still allocates: %.1f KB over 200 samples", grown))
+now = 300000; foreign = true
+local sampledAt = sample.t
 addon:CaptureLitePlayerPinDiagnostic()
 addon:PrintLitePlayerPinDiagnostic()
-assert(addon.playerPinDiagnostic == sample and #output == 5, "Settings must report the HUD sample")
+assert(sample.t == sampledAt and #output == 5, "Settings must report the HUD sample")
 foreign = false; hidden = true
 addon:CaptureLitePlayerPinDiagnostic()
-assert(addon.playerPinDiagnostic == sample)
+assert(sample.t == sampledAt)
 print("PASS: player pin draw order, native refresh, restoration and HUD diagnostics")

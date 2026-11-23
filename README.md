@@ -86,8 +86,8 @@ The displayed name is fixed in `Main.lua`; the version comes from the manifest. 
 version, edit these two adjacent lines in `PBsMiniMap.addon` and nothing else:
 
 ```
-## Title: |cFF69B4PB’s MiniMap|r 2.3.5
-## Version: 2.3.5
+## Title: |cFF69B4PB’s MiniMap|r 2.3.6
+## Version: 2.3.6
 ```
 
 `python3 tools/package.py` then writes `PBsMiniMap.zip` from the files the manifest lists and

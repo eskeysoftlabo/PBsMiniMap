@@ -99,7 +99,7 @@ for _, position in ipairs({
     {0.4, 0.6, true, true}, {0/0, 0.5, true, false},
 }) do
     addon, s = fixture()
-    s.x, s.y, s.shown, s.symbolic = table.unpack(position)
+    s.x, s.y, s.shown, s.symbolic = (table.unpack or unpack)(position)
     s.hidden = true
     addon:FollowPlayerTick()
     assert(s.selects == 1 and s.centres == 0 and s.hidden)
